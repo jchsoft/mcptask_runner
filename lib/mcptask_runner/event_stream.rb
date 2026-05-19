@@ -27,6 +27,8 @@ module McptaskRunner
         @machine_id = ENV.fetch("HOSTNAME") { `hostname`.strip }
         @last_reconnect_attempt = nil
         @last_snapshot_emit = nil
+        @last_snapshot = nil
+        @last_emitted_status = nil
         @builder = SnapshotBuilder.new(session_id: @session_id, machine_id: @machine_id)
 
         connect
@@ -47,56 +49,32 @@ module McptaskRunner
           return
         end
 
-        unless force
+        new_status = (snapshot_hash[:status] || snapshot_hash["status"])&.to_s
+        is_closed = new_status == "closed"
+        status_changed = new_status && new_status != @last_emitted_status
+
+        unless force || is_closed || status_changed
           now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           last = @last_snapshot_emit
           return if last && (now - last) < SNAPSHOT_THROTTLE_S
-
-          @last_snapshot_emit = now
         end
 
-        data = JSON.generate({
-          action: "event",
-          session_id: @session_id,
-          machine_id: @machine_id,
-          event_type: "runner.snapshot",
-          payload: snapshot_hash
-        })
+        @last_snapshot_emit = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        @last_emitted_status = new_status if new_status
+        @last_snapshot = snapshot_hash
 
         ws.send(JSON.generate({
           command: "message",
           identifier: CHANNEL_IDENTIFIER,
-          data: data
+          data: JSON.generate({
+            action: "snapshot",
+            session_id: @session_id,
+            machine_id: @machine_id,
+            snapshot: snapshot_hash
+          })
         }))
       rescue StandardError => e
         Logger.warn "[EventStream] Failed to emit snapshot: #{e.message}"
-        attempt_async_reconnect
-      end
-
-      def emit(event_type, payload)
-        return unless enabled?
-
-        ws = @mutex&.synchronize { @ws }
-        unless ws&.open?
-          attempt_async_reconnect
-          return
-        end
-
-        data = JSON.generate({
-          action: "event",
-          session_id: @session_id,
-          machine_id: @machine_id,
-          event_type: event_type,
-          payload: payload
-        })
-
-        ws.send(JSON.generate({
-          command: "message",
-          identifier: CHANNEL_IDENTIFIER,
-          data: data
-        }))
-      rescue StandardError => e
-        Logger.warn "[EventStream] Failed to emit #{event_type}: #{e.message}"
         attempt_async_reconnect
       end
 
@@ -211,6 +189,8 @@ module McptaskRunner
           @subscribed = true
           @subscribed_cv.signal
         end
+
+        emit_snapshot(@last_snapshot, force: true) if @last_snapshot
       rescue JSON::ParserError
         nil
       rescue StandardError => e
