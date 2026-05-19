@@ -49,6 +49,7 @@ module McptaskRunner
       @mutex.synchronize do
         @task_id = task_id
         @task_name = task_name
+        @todos = [] # prior task's TodoWrite must not leak into next task
         touch_activity
       end
     end

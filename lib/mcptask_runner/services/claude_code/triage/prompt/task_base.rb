@@ -36,10 +36,11 @@ module McptaskRunner
               #{model_selection_rules}
 
               #{result_format_instruction(
-                '"status": "success", "recommended_model": "sonnet", "task_id": 123, "resuming": false, "piece_type": "Task", "story_id": null, "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}',
+                '"status": "success", "recommended_model": "sonnet", "task_id": 123, "task_name": "Piece title", "resuming": false, "piece_type": "Task", "story_id": null, "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}',
                 extra_rules: [
                   'recommended_model: "opus"/"sonnet"/"haiku" (lowercase)',
                   'task_id = relative_id of task (or subtask if Story)',
+                  'task_name = piece title (or subtask title if Story); empty string if missing',
                   'resuming: boolean (not string)',
                   'piece_type: "Task" or "Story" (Story only if STEP 2b)',
                   'story_id: Story relative_id if piece_type="Story", else null',

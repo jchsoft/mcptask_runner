@@ -41,6 +41,12 @@ class SnapshotBuilderTest < Minitest::Test
     assert_equal "Fix bug", h[:task_name]
   end
 
+  def test_set_task_clears_prior_todos
+    @builder.set_todos([{ content: "Old", status: "pending", activeForm: "Old" }])
+    @builder.set_task(task_id: 43, task_name: "Next")
+    assert_equal [], @builder.to_h[:todo_list]
+  end
+
   # ---- set_model ----
 
   def test_set_model_stored

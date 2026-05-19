@@ -46,7 +46,7 @@ module McptaskRunner
         model_override = upgrade_model_for_resume(model_override, resuming)
         Logger.info_stdout("[WorkLoop] Triage recommended model: #{model_override} (task_id: #{triaged_task_id}, resuming: #{resuming})")
         @builder&.set_model(model_override)
-        @builder&.set_task(task_id: triaged_task_id)
+        @builder&.set_task(task_id: triaged_task_id, task_name: triage_result['task_name'])
         @builder&.set_status(:processing)
         EventStream.emit_snapshot(@builder.to_h, force: true) if @builder
 
