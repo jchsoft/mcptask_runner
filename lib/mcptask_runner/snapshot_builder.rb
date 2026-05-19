@@ -39,6 +39,7 @@ module McptaskRunner
       @quota = nil
       @error_message = nil
       @active_actions = {}
+      @todos = []
       @closed_at = nil
       @ttl_seconds = nil
       @last_activity_at = Time.now.utc
@@ -55,7 +56,7 @@ module McptaskRunner
     def set_status(status, error_message: nil)
       status = status.to_s
       @mutex.synchronize do
-        validate_transition!(@status, status)
+        assert_valid_transition(@status, status)
         @status = status
         @error_message = error_message
         touch_activity
@@ -72,6 +73,16 @@ module McptaskRunner
     def set_quota(per_day_hours:, already_worked_hours:)
       @mutex.synchronize do
         @quota = { per_day_hours: per_day_hours.to_f, already_worked_hours: already_worked_hours.to_f }
+        touch_activity
+      end
+    end
+
+    # Update the todo list snapshot from a TodoWrite tool input.
+    # Each entry is normalized to { content, status, activeForm }.
+    # Empty / nil input clears the list.
+    def set_todos(todos)
+      @mutex.synchronize do
+        @todos = Array(todos).map { |t| normalize_todo(t) }.compact
         touch_activity
       end
     end
@@ -163,6 +174,7 @@ module McptaskRunner
         status:           @status,
         model:            @model,
         active_actions:   build_active_actions(now_mono),
+        todo_list:        @todos.dup,
         last_activity_at: @last_activity_at.iso8601(3),
         error_message:    @error_message,
         quota:            @quota ? { per_day_hours: @quota[:per_day_hours], already_worked_hours: @quota[:already_worked_hours] } : nil,
@@ -185,7 +197,23 @@ module McptaskRunner
       end
     end
 
-    def validate_transition!(from, to)
+    def normalize_todo(todo)
+      h = todo.is_a?(Hash) ? todo.transform_keys(&:to_s) : nil
+      return nil unless h && h['content']
+
+      {
+        content:    h['content'].to_s[0, 200],
+        status:     normalize_todo_status(h['status']),
+        activeForm: h['activeForm'].to_s[0, 200]
+      }
+    end
+
+    def normalize_todo_status(status)
+      s = status.to_s
+      %w[pending in_progress completed].include?(s) ? s : 'pending'
+    end
+
+    def assert_valid_transition(from, to)
       return if to == "frozen" # any → frozen: server watchdog can always freeze
       return if to == "closed" # any → closed: end_session always allowed
 

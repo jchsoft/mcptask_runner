@@ -133,4 +133,53 @@ class WorkLoopBasicsTest < Minitest::Test
   def test_task_auto_squash_is_in_valid_how_values
     assert_includes McptaskRunner::WorkLoop::VALID_HOW_VALUES, :task_auto_squash
   end
+
+  # On uncaught exception inside the loop, the snapshot must reflect the crash
+  # before the ensure block closes the session.
+  def test_flag_builder_crash_sets_error_status_with_message
+    loop_instance = McptaskRunner::WorkLoop.new
+    builder = McptaskRunner::SnapshotBuilder.new(session_id: "s", machine_id: "m")
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    loop_instance.instance_variable_set(:@builder, builder)
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
+      loop_instance.send(:flag_builder_crash, RuntimeError.new("boom"))
+    end
+
+    assert_equal "error", builder.status
+    assert_equal "boom", builder.to_h[:error_message]
+  end
+
+  def test_flag_builder_crash_skips_when_already_error
+    loop_instance = McptaskRunner::WorkLoop.new
+    builder = McptaskRunner::SnapshotBuilder.new(session_id: "s", machine_id: "m")
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    builder.set_status(:error, error_message: "first")
+    loop_instance.instance_variable_set(:@builder, builder)
+
+    emitted = []
+    McptaskRunner::EventStream.stub(:emit_snapshot, ->(snap, **_kw) { emitted << snap }) do
+      loop_instance.send(:flag_builder_crash, RuntimeError.new("second"))
+    end
+
+    assert_equal "first", builder.to_h[:error_message], "Existing error message must not be clobbered"
+    assert_empty emitted, "Already-error status must not re-emit"
+  end
+
+  def test_flag_builder_crash_skips_when_finished
+    loop_instance = McptaskRunner::WorkLoop.new
+    builder = McptaskRunner::SnapshotBuilder.new(session_id: "s", machine_id: "m")
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    builder.set_status(:finished)
+    loop_instance.instance_variable_set(:@builder, builder)
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
+      loop_instance.send(:flag_builder_crash, RuntimeError.new("after-finish"))
+    end
+
+    assert_equal "finished", builder.status
+  end
 end

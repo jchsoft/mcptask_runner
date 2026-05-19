@@ -48,6 +48,42 @@ class SnapshotBuilderTest < Minitest::Test
     assert_equal "claude-sonnet-4-6", @builder.to_h[:model]
   end
 
+  # ---- set_todos ----
+
+  def test_todo_list_initially_empty
+    assert_equal [], @builder.to_h[:todo_list]
+  end
+
+  def test_set_todos_normalizes_entries
+    @builder.set_todos([
+      { content: "Plan", status: "completed", activeForm: "Planning" },
+      { "content" => "Code", "status" => "in_progress", "activeForm" => "Coding" }
+    ])
+    list = @builder.to_h[:todo_list]
+    assert_equal 2, list.size
+    assert_equal "Plan", list[0][:content]
+    assert_equal "completed", list[0][:status]
+    assert_equal "Coding", list[1][:activeForm]
+  end
+
+  def test_set_todos_drops_entries_without_content
+    @builder.set_todos([{ content: nil, status: "pending" }, { content: "Real", status: "pending" }])
+    list = @builder.to_h[:todo_list]
+    assert_equal 1, list.size
+    assert_equal "Real", list[0][:content]
+  end
+
+  def test_set_todos_defaults_unknown_status_to_pending
+    @builder.set_todos([{ content: "X", status: "weird" }])
+    assert_equal "pending", @builder.to_h[:todo_list][0][:status]
+  end
+
+  def test_set_todos_with_nil_clears_list
+    @builder.set_todos([{ content: "X", status: "pending" }])
+    @builder.set_todos(nil)
+    assert_equal [], @builder.to_h[:todo_list]
+  end
+
   # ---- set_quota ----
 
   def test_set_quota_stored

@@ -27,8 +27,8 @@ module McptaskRunner
           # API overload retries are handled separately with their own counter and backoff
           next if @retry_state.api_overload_count > overload_before
 
-          if @stream_line_count >= PRODUCTIVE_STREAM_THRESHOLD
-            Logger.info_stdout "[#{@log_tag}] Claude was productive (#{@stream_line_count} stream events), resetting retry counter"
+          if @state.stream_line_count >= PRODUCTIVE_STREAM_THRESHOLD
+            Logger.info_stdout "[#{@log_tag}] Claude was productive (#{@state.stream_line_count} stream events), resetting retry counter"
             @retry_state.count = 0
           else
             @retry_state.count += 1
@@ -69,14 +69,14 @@ module McptaskRunner
       end
 
       def api_overload_detected?
-        @api_overload ||
+        @state.api_overload ||
           @accumulated_output.include?('"error_status": 529') ||
           @accumulated_output.include?('Repeated 529 Overloaded') ||
           @accumulated_output.include?('"error_status":529')
       end
 
       def context_overflow_detected?
-        @context_overflow ||
+        @state.context_overflow ||
           @accumulated_output.include?('Prompt is too long') ||
           @accumulated_output.include?('prompt is too long') ||
           @accumulated_output.include?('context_length_exceeded')
