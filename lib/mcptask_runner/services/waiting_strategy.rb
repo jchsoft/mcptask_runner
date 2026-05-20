@@ -6,12 +6,14 @@ module McptaskRunner
     def wait_until_next_day(builder: nil)
       Logger.debug("[WaitingStrategy] [wait_until_next_day] Calculating next business day at 8 AM...")
       until_time = next_business_day_8am
+      enter_wait_state(builder, until_time)
       Logger.info_stdout("[WaitingStrategy] Next business day: #{until_time.strftime('%A, %Y-%m-%d at %H:%M')}")
       sleep_until(until_time, builder: builder)
     end
 
     def wait_one_hour(builder: nil)
       target_time = Time.now + 1.hour
+      enter_wait_state(builder, target_time)
       Logger.info_stdout("[WaitingStrategy] Waiting 1 hour before retry... (since #{Time.now.strftime('%H:%M')}, until #{target_time.strftime('%H:%M')})")
       Logger.debug("[WaitingStrategy] [wait_one_hour] Start time: #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}")
       Logger.debug("[WaitingStrategy] [wait_one_hour] Resume time: #{target_time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -21,6 +23,7 @@ module McptaskRunner
 
     def wait_half_hour(builder: nil)
       target_time = Time.now + 30.minutes
+      enter_wait_state(builder, target_time)
       Logger.info_stdout("[WaitingStrategy] Waiting 30 minutes before retry... (since #{Time.now.strftime('%H:%M')}, until #{target_time.strftime('%H:%M')})")
       Logger.debug("[WaitingStrategy] [wait_half_hour] Start time: #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}")
       Logger.debug("[WaitingStrategy] [wait_half_hour] Resume time: #{target_time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -29,6 +32,25 @@ module McptaskRunner
     end
 
     private
+
+    # Replace stale task_id/task_name with an informative "waiting for next task" label
+    # and flip status to :waiting before the long sleep. Web UI then renders a clear
+    # waiting badge with the resume time instead of "task X · Frozen" derived from
+    # the prior iteration's leftover task info.
+    def enter_wait_state(builder, until_time)
+      return unless builder
+
+      builder.set_task(task_id: nil, task_name: "Waiting for next task until #{format_until(until_time)}")
+      builder.set_status(:waiting) unless builder.status == "waiting"
+      EventStream.emit_snapshot(builder.to_h, force: true)
+    rescue StandardError => e
+      Logger.debug("[WaitingStrategy] enter_wait_state failed: #{e.message}")
+    end
+
+    def format_until(until_time)
+      same_day = until_time.strftime("%Y-%m-%d") == Time.now.strftime("%Y-%m-%d")
+      same_day ? until_time.strftime("%H:%M") : until_time.strftime("%A %Y-%m-%d %H:%M")
+    end
 
     def sleep_until(until_time, builder: nil)
       Logger.debug("[WaitingStrategy] [sleep_until] Calculating sleep duration...")

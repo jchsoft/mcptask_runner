@@ -38,7 +38,6 @@ module McptaskRunner
         return if DailyScheduler.new(task_results: []).can_work_today?
 
         Logger.info_stdout('[WorkLoop] Cannot work today (quota is 0 or weekend), waiting until next business day...')
-        enter_waiting_state
         WaitingStrategy.new.wait_until_next_day(builder: @builder)
       end
 
@@ -48,7 +47,6 @@ module McptaskRunner
           return false
         end
 
-        enter_waiting_state
         WaitingStrategy.new.send(wait_method, builder: @builder)
 
         if end_of_workday?
@@ -57,16 +55,6 @@ module McptaskRunner
         end
 
         true
-      end
-
-      # Clear any stale task info from the prior iteration so the UI shows a
-      # clean "Waiting" badge instead of "working on task X · Frozen".
-      def enter_waiting_state
-        return unless @builder
-
-        @builder.set_task(task_id: nil, task_name: nil)
-        @builder.set_status(:waiting)
-        EventStream.emit_snapshot(@builder.to_h, force: true)
       end
 
       def handle_no_tasks_in_today_auto_squash_mode
@@ -82,7 +70,6 @@ module McptaskRunner
         return if scheduler.should_continue_working?
 
         Logger.info_stdout('[WorkLoop] Daily quota exceeded, waiting until next day...')
-        enter_waiting_state
         WaitingStrategy.new.wait_until_next_day(builder: @builder)
       end
     end
