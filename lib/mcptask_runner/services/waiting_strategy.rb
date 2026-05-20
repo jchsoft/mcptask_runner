@@ -3,34 +3,34 @@
 module McptaskRunner
   # WaitingStrategy handles sleep periods between task batches based on different conditions
   class WaitingStrategy
-    def wait_until_next_day
+    def wait_until_next_day(builder: nil)
       Logger.debug("[WaitingStrategy] [wait_until_next_day] Calculating next business day at 8 AM...")
       until_time = next_business_day_8am
       Logger.info_stdout("[WaitingStrategy] Next business day: #{until_time.strftime('%A, %Y-%m-%d at %H:%M')}")
-      sleep_until(until_time)
+      sleep_until(until_time, builder: builder)
     end
 
-    def wait_one_hour
+    def wait_one_hour(builder: nil)
       target_time = Time.now + 1.hour
       Logger.info_stdout("[WaitingStrategy] Waiting 1 hour before retry... (since #{Time.now.strftime('%H:%M')}, until #{target_time.strftime('%H:%M')})")
       Logger.debug("[WaitingStrategy] [wait_one_hour] Start time: #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}")
       Logger.debug("[WaitingStrategy] [wait_one_hour] Resume time: #{target_time.strftime('%Y-%m-%d %H:%M:%S')}")
-      sleep_until(target_time)
+      sleep_until(target_time, builder: builder)
       Logger.debug("[WaitingStrategy] [wait_one_hour] 1 hour wait complete, ready to retry")
     end
 
-    def wait_half_hour
+    def wait_half_hour(builder: nil)
       target_time = Time.now + 30.minutes
       Logger.info_stdout("[WaitingStrategy] Waiting 30 minutes before retry... (since #{Time.now.strftime('%H:%M')}, until #{target_time.strftime('%H:%M')})")
       Logger.debug("[WaitingStrategy] [wait_half_hour] Start time: #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}")
       Logger.debug("[WaitingStrategy] [wait_half_hour] Resume time: #{target_time.strftime('%Y-%m-%d %H:%M:%S')}")
-      sleep_until(target_time)
+      sleep_until(target_time, builder: builder)
       Logger.debug("[WaitingStrategy] [wait_half_hour] 30 minute wait complete, ready to retry")
     end
 
     private
 
-    def sleep_until(until_time)
+    def sleep_until(until_time, builder: nil)
       Logger.debug("[WaitingStrategy] [sleep_until] Calculating sleep duration...")
       duration_seconds = until_time - Time.now
 
@@ -45,12 +45,24 @@ module McptaskRunner
 
       # Sleep in chunks and check wall-clock time to handle macOS sleep/suspend
       # correctly. A single long sleep() counts uptime, not wall-clock time.
+      # Emit waiting-heartbeat snapshot per chunk so web UI doesn't infer a
+      # frozen session from stale last_activity_at during long quiet waits.
       while Time.now < until_time
         remaining = until_time - Time.now
         sleep([remaining, 60].min)
+        emit_wait_heartbeat(builder)
       end
 
       Logger.debug("[WaitingStrategy] [sleep_until] Sleep complete, woke up at #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}")
+    end
+
+    def emit_wait_heartbeat(builder)
+      return unless builder
+
+      builder.mark_activity
+      EventStream.emit_snapshot(builder.to_h, force: true)
+    rescue StandardError => e
+      Logger.debug("[WaitingStrategy] heartbeat emit failed: #{e.message}")
     end
 
     def next_business_day_8am
