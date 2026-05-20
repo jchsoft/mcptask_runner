@@ -64,7 +64,7 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
     assert_empty emitted, "Already-frozen heartbeat must not re-emit/re-transition"
   end
 
-  def test_mark_frozen_for_hung_tool_sets_frozen_without_kill
+  def test_mark_pending_for_hung_tool_sets_pending_without_kill
     base = McptaskRunner::ClaudeCodeBase.new
     builder = base.instance_variable_get(:@snapshot_builder)
     builder.set_status(:triage)
@@ -76,34 +76,34 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
     }
 
     McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
-      base.send(:mark_frozen_for_hung_tool, now)
+      base.send(:mark_pending_for_hung_tool, now)
     end
 
-    assert_equal "frozen", builder.status
+    assert_equal "pending", builder.status
     refute base.instance_variable_get(:@state).stopping, "Hung-tool warning must not kill subprocess"
     refute base.instance_variable_get(:@state).inactivity_timeout, "Hung-tool must not flip inactivity_timeout"
   end
 
-  def test_mark_frozen_for_hung_tool_skips_when_already_frozen
+  def test_mark_pending_for_hung_tool_skips_when_already_pending
     base = McptaskRunner::ClaudeCodeBase.new
     builder = base.instance_variable_get(:@snapshot_builder)
     builder.set_status(:triage)
     builder.set_status(:processing)
-    builder.set_status(:frozen, error_message: "earlier reason")
+    builder.set_status(:pending, error_message: "earlier reason")
     now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     builder.instance_variable_get(:@active_actions)["t1"] = {
-      name: "Bash", summary: "", mono_started_at: now - 4000, started_at: Time.now.utc.iso8601(3)
+      name: "Bash", summary: "", mono_started_at: now - 800, started_at: Time.now.utc.iso8601(3)
     }
 
     emitted = []
     McptaskRunner::EventStream.stub(:emit_snapshot, ->(snap, **_kw) { emitted << snap }) do
-      base.send(:mark_frozen_for_hung_tool, now)
+      base.send(:mark_pending_for_hung_tool, now)
     end
 
     assert_empty emitted
   end
 
-  def test_recover_from_frozen_if_resumed_transitions_back_to_processing
+  def test_recover_from_soft_warn_if_resumed_transitions_back_to_processing_from_frozen
     base = McptaskRunner::ClaudeCodeBase.new
     builder = base.instance_variable_get(:@snapshot_builder)
     builder.set_status(:triage)
@@ -111,14 +111,29 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
     builder.set_status(:frozen, error_message: "stale")
 
     McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
-      base.send(:recover_from_frozen_if_resumed, true)
+      base.send(:recover_from_soft_warn_if_resumed, true)
     end
 
     assert_equal "processing", builder.status
     assert_nil builder.to_h[:error_message], "Recovery must clear error_message"
   end
 
-  def test_recover_from_frozen_if_resumed_noop_when_stream_idle
+  def test_recover_from_soft_warn_if_resumed_transitions_back_to_processing_from_pending
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    builder.set_status(:pending, error_message: "tool slow")
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
+      base.send(:recover_from_soft_warn_if_resumed, true)
+    end
+
+    assert_equal "processing", builder.status
+    assert_nil builder.to_h[:error_message]
+  end
+
+  def test_recover_from_soft_warn_if_resumed_noop_when_stream_idle
     base = McptaskRunner::ClaudeCodeBase.new
     builder = base.instance_variable_get(:@snapshot_builder)
     builder.set_status(:triage)
@@ -126,20 +141,20 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
     builder.set_status(:frozen, error_message: "stale")
 
     McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
-      base.send(:recover_from_frozen_if_resumed, false)
+      base.send(:recover_from_soft_warn_if_resumed, false)
     end
 
     assert_equal "frozen", builder.status
   end
 
-  def test_recover_from_frozen_if_resumed_noop_when_not_frozen
+  def test_recover_from_soft_warn_if_resumed_noop_when_not_soft_warn
     base = McptaskRunner::ClaudeCodeBase.new
     builder = base.instance_variable_get(:@snapshot_builder)
     builder.set_status(:triage)
     builder.set_status(:processing)
 
     McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
-      base.send(:recover_from_frozen_if_resumed, true)
+      base.send(:recover_from_soft_warn_if_resumed, true)
     end
 
     assert_equal "processing", builder.status
@@ -177,5 +192,112 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
 
     refute base.send(:terminate_for_inactivity_if_idle, 0, 60, "")
     assert_equal "processing", builder.status
+  end
+
+  def test_terminate_for_hung_tool_if_dead_kills_quick_tool_past_threshold
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)["t1"] = {
+      name: "mcp__mcptask-online__LogWorkProgressTool", summary: "",
+      mono_started_at: now - 400, started_at: Time.now.utc.iso8601(3) # > HUNG_TOOL_KILL_QUICK (300)
+    }
+
+    base.stub(:kill_process, nil) do
+      base.stub(:release_test_lock, nil) do
+        base.stub(:write_debug_dump, nil) do
+          McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
+            assert base.send(:terminate_for_hung_tool_if_dead, now, "")
+          end
+        end
+      end
+    end
+
+    assert_equal "error", builder.status
+    assert_match(/hung 400s/, builder.to_h[:error_message])
+    assert base.instance_variable_get(:@state).stopping
+    assert base.instance_variable_get(:@state).inactivity_timeout
+  end
+
+  def test_terminate_for_hung_tool_if_dead_kills_long_tool_past_threshold
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)["t1"] = {
+      name: "Bash", summary: "", mono_started_at: now - 1600, # > HUNG_TOOL_KILL_LONG (1500)
+      started_at: Time.now.utc.iso8601(3)
+    }
+
+    base.stub(:kill_process, nil) do
+      base.stub(:release_test_lock, nil) do
+        base.stub(:write_debug_dump, nil) do
+          McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
+            assert base.send(:terminate_for_hung_tool_if_dead, now, "")
+          end
+        end
+      end
+    end
+
+    assert_equal "error", builder.status
+    assert base.instance_variable_get(:@state).stopping
+  end
+
+  def test_terminate_for_hung_tool_if_dead_skips_quick_tool_below_threshold
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)["t1"] = {
+      name: "mcp__mcptask-online__LogWorkProgressTool", summary: "",
+      mono_started_at: now - 200, started_at: Time.now.utc.iso8601(3) # < 300 quick kill
+    }
+
+    refute base.send(:terminate_for_hung_tool_if_dead, now, "")
+    assert_equal "processing", builder.status
+  end
+
+  def test_terminate_for_hung_tool_if_dead_skips_long_tool_below_threshold
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)["t1"] = {
+      name: "Bash", summary: "", mono_started_at: now - 600, # < 1500 long kill
+      started_at: Time.now.utc.iso8601(3)
+    }
+
+    refute base.send(:terminate_for_hung_tool_if_dead, now, "")
+    assert_equal "processing", builder.status
+  end
+
+  def test_terminate_for_hung_tool_if_dead_escalates_from_pending_to_error
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    builder.set_status(:pending, error_message: "earlier hung warn")
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)["t1"] = {
+      name: "mcp__mcptask-online__LogWorkProgressTool", summary: "",
+      mono_started_at: now - 500, started_at: Time.now.utc.iso8601(3)
+    }
+
+    base.stub(:kill_process, nil) do
+      base.stub(:release_test_lock, nil) do
+        base.stub(:write_debug_dump, nil) do
+          McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
+            assert base.send(:terminate_for_hung_tool_if_dead, now, "")
+          end
+        end
+      end
+    end
+
+    assert_equal "error", builder.status
   end
 end

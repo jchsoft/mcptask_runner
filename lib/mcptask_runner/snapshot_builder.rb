@@ -19,10 +19,11 @@ module McptaskRunner
     TRANSITIONS = {
       "starting"   => %w[triage waiting error],
       "triage"     => %w[processing waiting triage error],
-      "processing" => %w[waiting finished stalled frozen triage error],
+      "processing" => %w[waiting finished stalled frozen pending triage error],
       "waiting"    => %w[processing triage finished error],
       "stalled"    => %w[processing triage error closed],
-      "frozen"     => %w[processing triage error closed],
+      "frozen"     => %w[processing triage error closed pending],
+      "pending"    => %w[processing triage error closed frozen],
       "finished"   => %w[closed waiting triage],
       "error"      => %w[closed triage],
       "closed"     => []
@@ -216,6 +217,7 @@ module McptaskRunner
 
     def assert_valid_transition(from, to)
       return if to == "frozen" # any → frozen: server watchdog can always freeze
+      return if to == "pending" # any → pending: hung-tool watchdog always allowed
       return if to == "closed" # any → closed: end_session always allowed
 
       allowed = TRANSITIONS.fetch(from, [])
