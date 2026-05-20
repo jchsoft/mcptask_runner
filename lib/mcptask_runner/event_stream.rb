@@ -16,7 +16,11 @@ module McptaskRunner
 
     class << self
       def start_session(mode:)
-        return unless enabled?
+        log_startup_diagnostics(mode: mode)
+        unless enabled?
+          Logger.info_stdout "[EventStream] DISABLED — #{disabled_reason}; runner snapshots will NOT reach mcptask.online"
+          return
+        end
 
         @subscribed = false
         @failed = false
@@ -31,9 +35,12 @@ module McptaskRunner
         @last_emitted_status = nil
         @builder = SnapshotBuilder.new(session_id: @session_id, machine_id: @machine_id)
 
+        Logger.info_stdout "[EventStream] Starting session: session_id=#{@session_id} machine_id=#{@machine_id.inspect} mode=#{mode.inspect}"
         connect
+        Logger.info_stdout "[EventStream] Session ready: subscribed=#{@subscribed} failed=#{@failed} ws_open=#{@ws&.open?}"
       rescue StandardError => e
-        Logger.warn "[EventStream] Failed to start session: #{e.message}"
+        Logger.warn "[EventStream] Failed to start session: #{e.class}: #{e.message}"
+        Logger.warn "[EventStream]   backtrace: #{e.backtrace&.first(5)&.join(' | ')}"
       end
 
       def builder
@@ -96,6 +103,27 @@ module McptaskRunner
 
       private
 
+      def log_startup_diagnostics(mode:)
+        token = resolved_token.to_s
+        Logger.info_stdout "[EventStream] === startup diagnostics (mode=#{mode.inspect}) ==="
+        Logger.info_stdout "[EventStream]   pid=#{Process.pid} pwd=#{Dir.pwd}"
+        Logger.info_stdout "[EventStream]   .mcp.json present? #{File.exist?(File.join(Dir.pwd, '.mcp.json'))}"
+        Logger.info_stdout "[EventStream]   mcp_server_config present? #{!mcp_server_config.nil?}"
+        Logger.info_stdout "[EventStream]   token_source=#{resolved_token_source} token_present? #{!token.empty?} (len=#{token.length})"
+        Logger.info_stdout "[EventStream]   resolved_cable_url=#{resolved_cable_url.inspect}"
+        Logger.info_stdout "[EventStream]   MCPT_RUNNER_CABLE_URL env=#{ENV['MCPT_RUNNER_CABLE_URL'].inspect}"
+        Logger.info_stdout "[EventStream]   HOSTNAME env=#{ENV['HOSTNAME'].inspect} hostname()=#{`hostname`.strip.inspect}"
+      rescue StandardError => e
+        Logger.warn "[EventStream] startup diagnostics threw #{e.class}: #{e.message}"
+      end
+
+      def disabled_reason
+        reasons = []
+        reasons << "token unresolved (#{resolved_token_source} empty)" if resolved_token.to_s.empty?
+        reasons << "cable URL unresolved (.mcp.json missing mcptask-online server entry?)" if resolved_cable_url.to_s.empty?
+        reasons.join(", ")
+      end
+
       def attempt_async_reconnect
         return unless @mutex && @session_id
         return if Thread.current[:eventstream_reconnecting]
@@ -128,12 +156,12 @@ module McptaskRunner
         require "websocket-client-simple"
 
         url = cable_url
-        Logger.info_stdout "[EventStream] Connecting to ActionCable..."
+        Logger.info_stdout "[EventStream] Connecting to ActionCable url=#{url.sub(/token=[^&]+/, 'token=***')}"
 
         stream = self
         client = WebSocket::Client::Simple.connect(url, headers: handshake_headers) do |c|
           c.on(:open) do
-            Logger.debug "[EventStream] WebSocket connected, subscribing..."
+            Logger.info_stdout "[EventStream] WebSocket open, sending subscribe (session_id=#{stream.instance_variable_get(:@session_id)})"
             c.send(JSON.generate({ command: "subscribe", identifier: CHANNEL_IDENTIFIER }))
           end
 
@@ -141,7 +169,7 @@ module McptaskRunner
 
           c.on(:error) { |e| stream.send(:handle_error, c, e) }
 
-          c.on(:close) { Logger.debug "[EventStream] WebSocket closed" }
+          c.on(:close) { Logger.info_stdout "[EventStream] WebSocket closed (session_id=#{stream.instance_variable_get(:@session_id)})" }
         end
 
         @mutex.synchronize { @ws = client }
@@ -184,7 +212,7 @@ module McptaskRunner
         parsed = JSON.parse(data)
         return unless parsed["type"] == "confirm_subscription"
 
-        Logger.debug "[EventStream] Subscription confirmed"
+        Logger.info_stdout "[EventStream] Subscription confirmed (session_id=#{@session_id})"
         @mutex.synchronize do
           @subscribed = true
           @subscribed_cv.signal
@@ -213,8 +241,25 @@ module McptaskRunner
       end
 
       def resolved_token
-        env_token_name = mcp_token_env_name || "MCPTASK_TOKEN"
-        ENV.fetch(env_token_name, "")
+        auth = mcp_server_config&.dig("headers", "Authorization").to_s
+        if (match = auth.match(/\$\{(\w+)\}/))
+          ENV.fetch(match[1], "")
+        elsif (match = auth.match(/\ABearer\s+(\S+)\z/))
+          match[1]
+        else
+          ENV.fetch("MCPTASK_TOKEN", "")
+        end
+      end
+
+      def resolved_token_source
+        auth = mcp_server_config&.dig("headers", "Authorization").to_s
+        if (match = auth.match(/\$\{(\w+)\}/))
+          "ENV[#{match[1].inspect}]"
+        elsif auth.match(/\ABearer\s+\S+\z/)
+          ".mcp.json Authorization (literal)"
+        else
+          "ENV[\"MCPTASK_TOKEN\"] (fallback)"
+        end
       end
 
       def cable_url_from_mcp_json
@@ -223,14 +268,6 @@ module McptaskRunner
 
       def mcp_server_url
         mcp_server_config&.dig("url")
-      end
-
-      def mcp_token_env_name
-        return nil unless mcp_server_config
-
-        auth = mcp_server_config.dig("headers", "Authorization").to_s
-        match = auth.match(/\$\{(\w+)\}/)
-        match && match[1]
       end
 
       def mcp_server_config

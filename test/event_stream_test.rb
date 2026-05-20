@@ -52,6 +52,37 @@ class EventStreamTest < Minitest::Test
     end
   end
 
+  def test_resolved_token_uses_literal_when_no_env_interpolation
+    fake_mcp = {
+      "mcpServers" => {
+        "mcptask-online" => {
+          "url" => "https://mcptask.online/mcp/sse",
+          "headers" => { "Authorization" => "Bearer eyJabc.def.ghi" }
+        }
+      }
+    }
+    McptaskRunner::EventStream.instance_variable_set(:@mcp_json, fake_mcp)
+    with_env("MCPT_RUNNER_CABLE_URL" => nil, "MCPTASK_TOKEN" => nil) do
+      assert_equal "eyJabc.def.ghi", McptaskRunner::EventStream.send(:resolved_token)
+      assert McptaskRunner::EventStream.enabled?
+    end
+  end
+
+  def test_resolved_token_prefers_env_interpolation
+    fake_mcp = {
+      "mcpServers" => {
+        "mcptask-online" => {
+          "url" => "https://mcptask.online/mcp/sse",
+          "headers" => { "Authorization" => "Bearer ${MCPTASK_TOKEN}" }
+        }
+      }
+    }
+    McptaskRunner::EventStream.instance_variable_set(:@mcp_json, fake_mcp)
+    with_env("MCPT_RUNNER_CABLE_URL" => nil, "MCPTASK_TOKEN" => "from-env") do
+      assert_equal "from-env", McptaskRunner::EventStream.send(:resolved_token)
+    end
+  end
+
   def test_start_session_noop_when_disabled
     with_env("MCPT_RUNNER_CABLE_URL" => nil, "MCPTASK_TOKEN" => nil) do
       McptaskRunner::EventStream.start_session(mode: :honest)
