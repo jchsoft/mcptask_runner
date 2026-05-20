@@ -9,12 +9,17 @@ module McptaskRunner
     # - per-tool hang past its WARN ceiling → :pending (tool slow, recoverable, soft warn)
     # - stream resumes after pending/frozen → :processing (clears error_message)
     # - inactive ≥ INACTIVITY_TIMEOUT → :error then SIGTERM the subprocess
-    # - per-tool hang past its KILL ceiling → :error then SIGTERM (hung-tool escalation)
+    # - per-tool hang past its KILL ceiling AND stream quiet ≥ STREAM_QUIET_KILL → :error + SIGTERM
     # - mid-task quota crossing → :error then SIGTERM
     module HeartbeatMonitoring
       INACTIVITY_TIMEOUT = 1200 # 20 minutes - kill only if stream_line_count stops changing
       HEARTBEAT_INTERVAL = 120 # 2 minutes between heartbeat messages
       FROZEN_WARN_THRESHOLD = 180 # 3 minutes — soft warn: stream stuck (no active tools); status=frozen
+      # How long the stream must be quiet (no new lines) before hung-tool warn/kill may fire.
+      # Without this gate, an orphan tool entry (Claude Code occasionally never emits tool_result
+      # for a Skill / forked execution) would trigger SIGTERM even while Claude is clearly alive,
+      # firing new tools. Stream advancing = Claude responsive = no kill.
+      STREAM_QUIET_KILL_THRESHOLD = 180 # 3 minutes
       # Per-tool ceilings (seconds). :warn → status=:pending (soft warn).
       # :kill → status=:error + SIGTERM. Quick = MCP/Read/Edit/Grep. Long = Bash/Task.
       TOOL_HANG_TIMEOUTS = { quick: { warn: 120, kill: 300 }, long: { warn: 600, kill: 1500 } }.freeze
@@ -30,7 +35,9 @@ module McptaskRunner
       # single tool that genuinely hangs forever (status → pending → error+SIGTERM).
       def heartbeat_loop(stderr_content, execution_start)
         last_known_count = @state.stream_line_count
-        last_activity_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        last_activity_time = now
+        last_stream_time = now
 
         loop do
           sleep(HEARTBEAT_INTERVAL)
@@ -40,16 +47,18 @@ module McptaskRunner
           current_count = @state.stream_line_count
           stream_advanced = current_count != last_known_count
           last_activity_time = now if stream_advanced || @snapshot_builder.has_active_tools?
+          last_stream_time = now if stream_advanced
           last_known_count = current_count
           inactive_seconds = (now - last_activity_time).to_i
+          stream_quiet_seconds = (now - last_stream_time).to_i
 
           recover_from_soft_warn_if_resumed(stream_advanced)
           emit_heartbeat(current_count, inactive_seconds, now)
           break if heartbeat_quota_terminate(execution_start, now)
           break if terminate_for_inactivity_if_idle(current_count, inactive_seconds, stderr_content)
-          break if terminate_for_hung_tool_if_dead(now, stderr_content)
+          break if terminate_for_hung_tool_if_dead(now, stderr_content, stream_quiet_seconds)
 
-          mark_pending_for_hung_tool(now)
+          mark_pending_for_hung_tool(now, stream_quiet_seconds)
           mark_frozen_for_inactive(inactive_seconds)
         end
       rescue StandardError => e
@@ -64,7 +73,9 @@ module McptaskRunner
         EventStream.emit_snapshot(@snapshot_builder.to_h)
       end
 
-      def mark_pending_for_hung_tool(now)
+      def mark_pending_for_hung_tool(now, stream_quiet_seconds)
+        return if stream_quiet_seconds < STREAM_QUIET_KILL_THRESHOLD
+
         hung = hung_tool(now)
         return unless hung
         return if @snapshot_builder.status == "pending"
@@ -142,12 +153,14 @@ module McptaskRunner
         TOOL_HANG_TIMEOUTS[tool_category(name)][:warn]
       end
 
-      def terminate_for_hung_tool_if_dead(now, stderr_content)
+      def terminate_for_hung_tool_if_dead(now, stderr_content, stream_quiet_seconds)
+        return false if stream_quiet_seconds < STREAM_QUIET_KILL_THRESHOLD
+
         dead = dead_tool(now)
         return false unless dead
 
         elapsed = (now - dead[:mono_started_at]).to_i
-        msg = "Tool #{dead[:name]} hung #{elapsed}s — killing subprocess"
+        msg = "Tool #{dead[:name]} hung #{elapsed}s — killing subprocess (stream quiet #{stream_quiet_seconds}s)"
         Logger.error "[#{@log_tag}] #{msg} (>#{tool_kill_timeout_for(dead[:name])}s)"
         @snapshot_builder.set_status(:error, error_message: msg)
         EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)

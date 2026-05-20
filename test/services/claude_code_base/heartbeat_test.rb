@@ -76,7 +76,7 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
     }
 
     McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
-      base.send(:mark_pending_for_hung_tool, now)
+      base.send(:mark_pending_for_hung_tool, now, 300)
     end
 
     assert_equal "pending", builder.status
@@ -97,7 +97,7 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
 
     emitted = []
     McptaskRunner::EventStream.stub(:emit_snapshot, ->(snap, **_kw) { emitted << snap }) do
-      base.send(:mark_pending_for_hung_tool, now)
+      base.send(:mark_pending_for_hung_tool, now, 300)
     end
 
     assert_empty emitted
@@ -209,7 +209,7 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
       base.stub(:release_test_lock, nil) do
         base.stub(:write_debug_dump, nil) do
           McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
-            assert base.send(:terminate_for_hung_tool_if_dead, now, "")
+            assert base.send(:terminate_for_hung_tool_if_dead, now, "", 300)
           end
         end
       end
@@ -236,7 +236,7 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
       base.stub(:release_test_lock, nil) do
         base.stub(:write_debug_dump, nil) do
           McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
-            assert base.send(:terminate_for_hung_tool_if_dead, now, "")
+            assert base.send(:terminate_for_hung_tool_if_dead, now, "", 300)
           end
         end
       end
@@ -257,7 +257,7 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
       mono_started_at: now - 200, started_at: Time.now.utc.iso8601(3) # < 300 quick kill
     }
 
-    refute base.send(:terminate_for_hung_tool_if_dead, now, "")
+    refute base.send(:terminate_for_hung_tool_if_dead, now, "", 300)
     assert_equal "processing", builder.status
   end
 
@@ -272,8 +272,76 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
       started_at: Time.now.utc.iso8601(3)
     }
 
-    refute base.send(:terminate_for_hung_tool_if_dead, now, "")
+    refute base.send(:terminate_for_hung_tool_if_dead, now, "", 300)
     assert_equal "processing", builder.status
+  end
+
+  # Polling Skill loops (ci-wait/test-wait) leave stale active_actions entries — Claude Code
+  # sometimes never re-emits tool_result. While Claude keeps streaming new tool calls,
+  # SIGTERMing the parent because of a stale entry is wrong. Gate kill on stream quiet.
+  def test_terminate_for_hung_tool_if_dead_skips_when_stream_recently_advanced
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)["stale_skill"] = {
+      name: "Skill", summary: "ci-wait", mono_started_at: now - 1600,
+      started_at: Time.now.utc.iso8601(3)
+    }
+
+    refute base.send(:terminate_for_hung_tool_if_dead, now, "", 60),
+           "Tool past kill ceiling must NOT trigger kill when stream is still advancing"
+    assert_equal "processing", builder.status
+    refute base.instance_variable_get(:@state).stopping
+  end
+
+  def test_terminate_for_hung_tool_if_dead_fires_when_stream_quiet_long_enough
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)["t1"] = {
+      name: "mcp__mcptask-online__LogWorkProgressTool", summary: "",
+      mono_started_at: now - 400, started_at: Time.now.utc.iso8601(3)
+    }
+
+    base.stub(:kill_process, nil) do
+      base.stub(:release_test_lock, nil) do
+        base.stub(:write_debug_dump, nil) do
+          McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
+            assert base.send(:terminate_for_hung_tool_if_dead, now, "",
+                             McptaskRunner::ClaudeCodeBase::STREAM_QUIET_KILL_THRESHOLD + 10)
+          end
+        end
+      end
+    end
+
+    assert_equal "error", builder.status
+  end
+
+  def test_mark_pending_for_hung_tool_skips_when_stream_recently_advanced
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)["t1"] = {
+      name: "mcp__mcptask-online__LogWorkProgressTool", summary: "",
+      mono_started_at: now - 200, started_at: Time.now.utc.iso8601(3)
+    }
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
+      base.send(:mark_pending_for_hung_tool, now, 60)
+    end
+
+    assert_equal "processing", builder.status,
+                 "pending warn must not fire while Claude stream is fresh"
+  end
+
+  def test_stream_quiet_kill_threshold_constant_is_defined
+    assert_equal 180, McptaskRunner::ClaudeCodeBase::STREAM_QUIET_KILL_THRESHOLD
   end
 
   def test_terminate_for_hung_tool_if_dead_escalates_from_pending_to_error
@@ -292,7 +360,7 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
       base.stub(:release_test_lock, nil) do
         base.stub(:write_debug_dump, nil) do
           McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
-            assert base.send(:terminate_for_hung_tool_if_dead, now, "")
+            assert base.send(:terminate_for_hung_tool_if_dead, now, "", 300)
           end
         end
       end
