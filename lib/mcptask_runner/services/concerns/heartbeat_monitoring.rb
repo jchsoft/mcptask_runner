@@ -18,7 +18,9 @@ module McptaskRunner
       # Per-tool ceilings (seconds). :warn → status=:pending (soft warn).
       # :kill → status=:error + SIGTERM. Quick = MCP/Read/Edit/Grep. Long = Bash/Task.
       TOOL_HANG_TIMEOUTS = { quick: { warn: 120, kill: 300 }, long: { warn: 600, kill: 1500 } }.freeze
-      LONG_RUNNING_TOOLS = %w[Bash Task].freeze
+      # Tools that legitimately run long: Bash (CI/system tests), Task (subagents),
+      # Skill (forked sub-skill execution like ci-wait/test-wait can poll up to 9 min each).
+      LONG_RUNNING_TOOLS = %w[Bash Task Skill].freeze
 
       private
 

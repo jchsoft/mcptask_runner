@@ -56,6 +56,56 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     assert_equal 0, base.instance_variable_get(:@snapshot_builder).active_tool_count
   end
 
+  def test_track_system_task_event_marks_tool_finished_on_completed
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.tool_started(tool_id: 'tool_abc', name: 'Skill', summary: 'ci-wait')
+
+    line = '{"type":"system","subtype":"task_notification","tool_use_id":"tool_abc","status":"completed"}'
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_system_task_event, line) }
+
+    assert_equal 0, builder.active_tool_count
+  end
+
+  def test_track_system_task_event_marks_tool_finished_on_failed
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.tool_started(tool_id: 'tool_abc', name: 'Skill', summary: 'ci-wait')
+
+    line = '{"type":"system","subtype":"task_notification","tool_use_id":"tool_abc","status":"failed"}'
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_system_task_event, line) }
+
+    assert_equal 0, builder.active_tool_count
+  end
+
+  def test_track_system_task_event_ignores_non_task_notification
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.tool_started(tool_id: 'tool_abc', name: 'Skill', summary: '')
+
+    line = '{"type":"system","subtype":"task_started","tool_use_id":"tool_abc"}'
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_system_task_event, line) }
+
+    assert_equal 1, builder.active_tool_count, 'task_started must NOT mark finished'
+  end
+
+  def test_track_system_task_event_idempotent_when_tool_already_finished
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+
+    line = '{"type":"system","subtype":"task_notification","tool_use_id":"unknown_id","status":"completed"}'
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_system_task_event, line) }
+
+    assert_equal 0, builder.active_tool_count
+  end
+
+  def test_track_system_task_event_ignores_non_json
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.send(:track_system_task_event, 'not json')
+    # No raise, no change
+    assert_equal 0, base.instance_variable_get(:@snapshot_builder).active_tool_count
+  end
+
   def test_format_active_tools_empty
     base = McptaskRunner::ClaudeCodeBase.new
     assert_equal '', base.send(:format_active_tools)

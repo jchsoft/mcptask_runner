@@ -21,6 +21,32 @@ module McptaskRunner
         yield error_msg
       end
 
+      # Claude Code's Skill tool (and other forked-execution tools) emit completion via
+      # `type:system, subtype:task_notification, status:completed` rather than a standard
+      # `tool_result` content item. Without this, the tool stays "active" in active_actions
+      # forever — heartbeat hung-tool detection then false-positive kills legitimate ci-wait
+      # polling loops. Match by tool_use_id and mark finished idempotently.
+      def track_system_task_event(line)
+        parsed = JSON.parse(line)
+        return unless parsed['type'] == 'system' && parsed['subtype'] == 'task_notification'
+        return unless %w[completed failed].include?(parsed['status'])
+
+        tool_use_id = parsed['tool_use_id']
+        return unless tool_use_id
+
+        action = @snapshot_builder.active_actions_snapshot[tool_use_id]
+        return unless action
+
+        now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        duration = (now - action[:mono_started_at]).round(1)
+        @snapshot_builder.tool_finished(tool_id: tool_use_id)
+        EventStream.emit_snapshot(@snapshot_builder.to_h)
+        Logger.debug "[#{@log_tag}] [tool_tracking] Tool finished via task_notification: " \
+                     "#{action[:name]} after #{duration}s (status=#{parsed['status']})"
+      rescue JSON::ParserError
+        # Not JSON, ignore
+      end
+
       def track_tool_event(line)
         parsed = JSON.parse(line)
         content_items = parsed.dig('message', 'content')

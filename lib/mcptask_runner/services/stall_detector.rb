@@ -21,6 +21,12 @@ module McptaskRunner
     WINDOW_SIZE               = 12
 
     MUTATING_TOOLS = %w[Edit Write NotebookEdit].freeze
+    # Polling helpers — same-input re-invocation is by design (poll CI/test/lock until done).
+    # Excluded from loop_signature detection or every CI wait > 4 invocations would false-positive.
+    POLLING = {
+      skills: %w[ci-wait test-wait wait-unlock].freeze,
+      bash_re: %r{\.claude/bin/(?:ci_wait|test_wait|wait_unlock)\b}.freeze
+    }.freeze
 
     def initialize(log_tag)
       @log_tag = log_tag
@@ -33,7 +39,10 @@ module McptaskRunner
 
     def observe_tool_use(item)
       name = item['name']
-      sig  = signature_for(name, item['input'] || {})
+      input = item['input'] || {}
+      return nil if polling_call?(name, input)
+
+      sig = signature_for(name, input)
       @pending[item['id']] = { name: name, signature: sig }
 
       push_signature(sig)
@@ -51,6 +60,13 @@ module McptaskRunner
     end
 
     private
+
+    def polling_call?(name, input)
+      case name
+      when 'Skill' then POLLING[:skills].include?(input['skill'])
+      when 'Bash'  then input['command'].to_s.match?(POLLING[:bash_re])
+      end
+    end
 
     def on_mutating_result(pending, is_error)
       if is_error

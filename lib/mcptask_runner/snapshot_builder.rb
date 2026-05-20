@@ -218,6 +218,7 @@ module McptaskRunner
     def assert_valid_transition(from, to)
       return if to == "frozen" # any → frozen: server watchdog can always freeze
       return if to == "pending" # any → pending: hung-tool watchdog always allowed
+      return if to == "stalled" # any → stalled: StallDetector watchdog always allowed
       return if to == "closed" # any → closed: end_session always allowed
 
       allowed = TRANSITIONS.fetch(from, [])
