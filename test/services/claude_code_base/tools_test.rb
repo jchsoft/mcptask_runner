@@ -56,6 +56,56 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     assert_equal 0, base.instance_variable_get(:@snapshot_builder).active_tool_count
   end
 
+  def test_track_system_task_event_marks_tool_finished_on_completed
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.tool_started(tool_id: 'tool_abc', name: 'Skill', summary: 'ci-wait')
+
+    line = '{"type":"system","subtype":"task_notification","tool_use_id":"tool_abc","status":"completed"}'
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_system_task_event, line) }
+
+    assert_equal 0, builder.active_tool_count
+  end
+
+  def test_track_system_task_event_marks_tool_finished_on_failed
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.tool_started(tool_id: 'tool_abc', name: 'Skill', summary: 'ci-wait')
+
+    line = '{"type":"system","subtype":"task_notification","tool_use_id":"tool_abc","status":"failed"}'
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_system_task_event, line) }
+
+    assert_equal 0, builder.active_tool_count
+  end
+
+  def test_track_system_task_event_ignores_non_task_notification
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.tool_started(tool_id: 'tool_abc', name: 'Skill', summary: '')
+
+    line = '{"type":"system","subtype":"task_started","tool_use_id":"tool_abc"}'
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_system_task_event, line) }
+
+    assert_equal 1, builder.active_tool_count, 'task_started must NOT mark finished'
+  end
+
+  def test_track_system_task_event_idempotent_when_tool_already_finished
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+
+    line = '{"type":"system","subtype":"task_notification","tool_use_id":"unknown_id","status":"completed"}'
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_system_task_event, line) }
+
+    assert_equal 0, builder.active_tool_count
+  end
+
+  def test_track_system_task_event_ignores_non_json
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.send(:track_system_task_event, 'not json')
+    # No raise, no change
+    assert_equal 0, base.instance_variable_get(:@snapshot_builder).active_tool_count
+  end
+
   def test_format_active_tools_empty
     base = McptaskRunner::ClaudeCodeBase.new
     assert_equal '', base.send(:format_active_tools)
@@ -77,8 +127,12 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
   # Tests for per-tool hang timeout — fast tools (MCP, Read/Edit/Grep) get a shorter ceiling than
   # long tools (Bash/Task running tests, CI, subagents). Catches MCP server hangs without
   # waiting the full 60min long-tool ceiling.
-  def test_quick_tool_hang_timeout_constant_is_defined
-    assert_equal 120, McptaskRunner::ClaudeCodeBase::QUICK_TOOL_HANG_TIMEOUT
+  def test_tool_hang_timeouts_constants_are_defined
+    timeouts = McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS
+    assert_equal 120, timeouts[:quick][:warn]
+    assert_equal 300, timeouts[:quick][:kill]
+    assert_equal 600, timeouts[:long][:warn]
+    assert_equal 1500, timeouts[:long][:kill]
   end
 
   def test_long_running_tools_constant_includes_bash_and_task
@@ -88,26 +142,38 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
 
   def test_tool_hang_timeout_for_bash_uses_long_ceiling
     base = McptaskRunner::ClaudeCodeBase.new
-    assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUT,
+    assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS[:long][:warn],
                  base.send(:tool_hang_timeout_for, 'Bash')
   end
 
   def test_tool_hang_timeout_for_task_uses_long_ceiling
     base = McptaskRunner::ClaudeCodeBase.new
-    assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUT,
+    assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS[:long][:warn],
                  base.send(:tool_hang_timeout_for, 'Task')
   end
 
   def test_tool_hang_timeout_for_mcp_tool_uses_quick_ceiling
     base = McptaskRunner::ClaudeCodeBase.new
-    assert_equal McptaskRunner::ClaudeCodeBase::QUICK_TOOL_HANG_TIMEOUT,
+    assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS[:quick][:warn],
                  base.send(:tool_hang_timeout_for, 'mcp__mcptask-online__LogWorkProgressTool')
   end
 
   def test_tool_hang_timeout_for_read_uses_quick_ceiling
     base = McptaskRunner::ClaudeCodeBase.new
-    assert_equal McptaskRunner::ClaudeCodeBase::QUICK_TOOL_HANG_TIMEOUT,
+    assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS[:quick][:warn],
                  base.send(:tool_hang_timeout_for, 'Read')
+  end
+
+  def test_tool_kill_timeout_for_bash_uses_long_kill
+    base = McptaskRunner::ClaudeCodeBase.new
+    assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS[:long][:kill],
+                 base.send(:tool_kill_timeout_for, 'Bash')
+  end
+
+  def test_tool_kill_timeout_for_mcp_tool_uses_quick_kill
+    base = McptaskRunner::ClaudeCodeBase.new
+    assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS[:quick][:kill],
+                 base.send(:tool_kill_timeout_for, 'mcp__mcptask-online__AddMessageTool')
   end
 
   def test_hung_tool_returns_nil_when_no_active_tools
@@ -139,25 +205,25 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     base = McptaskRunner::ClaudeCodeBase.new
     now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     base.instance_variable_get(:@snapshot_builder).instance_variable_get(:@active_actions)['id1'] = {
-      name: 'Bash', summary: '', mono_started_at: now - 1500, started_at: Time.now.utc.iso8601(3)
+      name: 'Bash', summary: '', mono_started_at: now - 400, started_at: Time.now.utc.iso8601(3)
     }
-    assert_nil base.send(:hung_tool, now), 'Bash within long ceiling must not be flagged'
+    assert_nil base.send(:hung_tool, now), 'Bash within 10min ceiling must not be flagged'
   end
 
   def test_hung_tool_detects_bash_past_long_limit
     base = McptaskRunner::ClaudeCodeBase.new
     now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     base.instance_variable_get(:@snapshot_builder).instance_variable_get(:@active_actions)['id1'] = {
-      name: 'Bash', summary: '', mono_started_at: now - 3700, started_at: Time.now.utc.iso8601(3)
+      name: 'Bash', summary: '', mono_started_at: now - 700, started_at: Time.now.utc.iso8601(3)
     }
-    refute_nil base.send(:hung_tool, now), 'Bash past 60min ceiling should be flagged'
+    refute_nil base.send(:hung_tool, now), 'Bash past 10min ceiling should be flagged'
   end
 
   def test_hung_tool_picks_quick_tool_over_long_bash
     base = McptaskRunner::ClaudeCodeBase.new
     now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     actions = base.instance_variable_get(:@snapshot_builder).instance_variable_get(:@active_actions)
-    actions['bash1'] = { name: 'Bash', summary: '', mono_started_at: now - 1200, started_at: Time.now.utc.iso8601(3) }
+    actions['bash1'] = { name: 'Bash', summary: '', mono_started_at: now - 500, started_at: Time.now.utc.iso8601(3) }
     actions['mcp1'] = { name: 'mcp__mcptask-online__AddMessageTool', summary: '', mono_started_at: now - 180, started_at: Time.now.utc.iso8601(3) }
     hung = base.send(:hung_tool, now)
     refute_nil hung

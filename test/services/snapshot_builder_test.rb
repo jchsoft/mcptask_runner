@@ -168,6 +168,27 @@ class SnapshotBuilderTest < Minitest::Test
     assert_equal "frozen", @builder.to_h[:status]
   end
 
+  def test_frozen_to_stalled_allowed
+    @builder.set_status("triage")
+    @builder.set_status("processing")
+    @builder.set_status("frozen")
+    @builder.set_status("stalled")
+    assert_equal "stalled", @builder.to_h[:status]
+  end
+
+  def test_pending_to_stalled_allowed
+    @builder.set_status("triage")
+    @builder.set_status("processing")
+    @builder.set_status("pending")
+    @builder.set_status("stalled")
+    assert_equal "stalled", @builder.to_h[:status]
+  end
+
+  def test_starting_to_stalled_allowed_as_watchdog_escape
+    @builder.set_status("stalled")
+    assert_equal "stalled", @builder.to_h[:status]
+  end
+
   def test_any_state_can_transition_to_closed
     @builder.set_status("closed")
     assert_equal "closed", @builder.to_h[:status]

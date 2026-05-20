@@ -290,6 +290,7 @@ module McptaskRunner
       @state.stream_line_count += 1
       @text_content << extract_text_from_line(line)
       track_tool_event(line)
+      track_system_task_event(line)
       check_for_mcp_server_status(line)
       check_for_context_overflow(line)
       check_for_api_overload(line)

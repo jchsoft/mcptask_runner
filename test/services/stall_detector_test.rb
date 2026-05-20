@@ -117,6 +117,62 @@ class StallDetectorTest < Minitest::Test
     assert_nil stall
   end
 
+  # ---- Polling exemption (ci-wait/test-wait/wait-unlock are designed for re-invocation) ----
+
+  def test_polling_skill_ci_wait_never_triggers_loop_signature
+    5.times do
+      stall = @detector.observe_tool_use(tool_use('Skill', { 'skill' => 'ci-wait', 'args' => 'self /log/ci.log' }))
+      assert_nil stall, "ci-wait polling must never stall"
+    end
+  end
+
+  def test_polling_skill_test_wait_never_triggers_loop_signature
+    5.times do
+      stall = @detector.observe_tool_use(tool_use('Skill', { 'skill' => 'test-wait', 'args' => 'self /log/test.log' }))
+      assert_nil stall
+    end
+  end
+
+  def test_polling_skill_wait_unlock_never_triggers_loop_signature
+    5.times do
+      stall = @detector.observe_tool_use(tool_use('Skill', { 'skill' => 'wait-unlock', 'args' => '' }))
+      assert_nil stall
+    end
+  end
+
+  def test_polling_bash_ci_wait_script_never_triggers_loop_signature
+    cmd = '~/.claude/bin/ci_wait "/log/ci.log" "self" 540'
+    5.times do
+      stall = @detector.observe_tool_use(tool_use('Bash', { 'command' => cmd }))
+      assert_nil stall
+    end
+  end
+
+  def test_polling_bash_test_wait_script_never_triggers_loop_signature
+    cmd = '~/.claude/bin/test_wait "/log/test.log" "self" 540'
+    5.times do
+      stall = @detector.observe_tool_use(tool_use('Bash', { 'command' => cmd }))
+      assert_nil stall
+    end
+  end
+
+  def test_non_polling_skill_still_stalls_on_loop_signature
+    4.times { @detector.observe_tool_use(tool_use('Skill', { 'skill' => 'some-other-skill', 'args' => 'x' })) }
+    stall = @detector.observe_tool_use(tool_use('Skill', { 'skill' => 'some-other-skill', 'args' => 'x' }))
+
+    refute_nil stall
+    assert_equal :loop_signature, stall.reason
+  end
+
+  def test_non_polling_bash_still_stalls_on_loop_signature
+    cmd = 'grep ci_wait some-other-log'  # mentions ci_wait but not the script path
+    4.times { @detector.observe_tool_use(tool_use('Bash', { 'command' => cmd })) }
+    stall = @detector.observe_tool_use(tool_use('Bash', { 'command' => cmd }))
+
+    refute_nil stall, 'Bash referencing ci_wait but not the script must still be eligible for stall'
+    assert_equal :loop_signature, stall.reason
+  end
+
   # ---- Helpers ----
 
   private
