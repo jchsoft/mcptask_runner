@@ -1,12 +1,15 @@
 # frozen_string_literal: true
 
 require 'English'
+require_relative 'urgent_bug_pin'
 
 module McptaskRunner
   module Concerns
     # Handles triage-based model selection and task execution dispatch
     # Includes story detection, executor mapping, and branch-based task ID detection
     module TriageExecution
+      include UrgentBugPin
+
       STORY_EXECUTOR_MAP = {
         ClaudeCode::Honest => ClaudeCode::StoryManual,
         ClaudeCode::TodayAutoSquash => ClaudeCode::StoryAutoSquash,
@@ -17,6 +20,7 @@ module McptaskRunner
       private
 
       def triage_and_execute(executor_class, **kwargs)
+        @task_id ||= read_urgent_pin
         task_id_for_triage = kwargs[:task_id] || @task_id || detect_task_id_from_branch
         story_id_for_triage = kwargs[:story_id]
 
@@ -69,7 +73,21 @@ module McptaskRunner
         result = run_with_quota_guard(executor_class.new(**executor_kwargs), triage_result, task_id)
         Logger.info_stdout("[WorkLoop] Task completed with status: #{result['status']}")
         Logger.debug("[WorkLoop] Full result: #{result.inspect}")
+        release_urgent_pin_if_done(task_id, result)
         result
+      end
+
+      # Pinned bug finished its turn — clear pin so the next loop iteration goes back to
+      # discovery (which naturally resumes the originally interrupted task via branch detection).
+      # Cascading sub-bug case (result is another urgent_bug_pending) was already handled in
+      # switch_to_main_if_urgent_bug, which overwrote the pin with the new bug_task_id.
+      def release_urgent_pin_if_done(task_id, result)
+        return unless result.is_a?(Hash)
+        return if result['status'] == 'urgent_bug_pending'
+        return unless read_urgent_pin == task_id
+
+        clear_urgent_pin
+        @task_id = nil
       end
 
       def run_with_quota_guard(executor, triage_result, task_id)
@@ -88,12 +106,15 @@ module McptaskRunner
         return result unless result.is_a?(Hash) && result['status'] == 'urgent_bug_pending'
 
         branch = current_git_branch
-        return result if branch.empty? || %w[main master].include?(branch)
+        if branch.empty? || %w[main master].include?(branch)
+          pin_urgent_bug(result['bug_task_id'])
+          return result
+        end
 
         Logger.info_stdout("[WorkLoop] Urgent bug ##{result['bug_task_id']} pending — switching from '#{branch}' to main")
         success, output = checkout_main_branch
         if success
-          Logger.info_stdout('[WorkLoop] On main; next triage will pick urgent bug')
+          pin_urgent_bug(result['bug_task_id'])
           return result
         end
 
@@ -102,6 +123,18 @@ module McptaskRunner
         result['status'] = 'urgent_bug_pending_dirty_branch'
         result['dirty_branch'] = branch
         result
+      end
+
+      def pin_urgent_bug(bug_task_id)
+        unless bug_task_id
+          Logger.warn('[WorkLoop] urgent_bug_pending without bug_task_id — cannot pin; next triage will fall back to discovery')
+          return
+        end
+
+        bug_id = bug_task_id.to_i
+        write_urgent_pin(bug_id)
+        @task_id = bug_id
+        Logger.info_stdout("[WorkLoop] Urgent pin set — next triage targets piece ##{bug_id}")
       end
 
       def current_git_branch
