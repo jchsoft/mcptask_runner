@@ -15,3 +15,16 @@ require "mcptask_runner"
 # developer shell has MCPTASK_TOKEN exported. Real emits require an explicit start_session.
 ENV.delete("MCPT_RUNNER_CABLE_URL")
 ENV.delete("MCPTASK_TOKEN")
+
+# Wipe any stale urgent-bug pin file from previous test runs (pin lives in cwd-relative tmp dir;
+# tests sharing the project root would otherwise leak pin state between cases).
+module UrgentBugPinTestCleanup
+  PIN_RELATIVE = File.join("tmp", "mcptask_runner", "urgent_pin.txt").freeze
+
+  def before_setup
+    super
+    pin = File.join(Dir.pwd, PIN_RELATIVE)
+    File.delete(pin) if File.exist?(pin)
+  end
+end
+Minitest::Test.prepend(UrgentBugPinTestCleanup)

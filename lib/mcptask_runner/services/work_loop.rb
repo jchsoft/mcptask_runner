@@ -23,7 +23,7 @@ module McptaskRunner
     def initialize(verbose: false, story_id: nil, task_id: nil, ignore_quota: false)
       @verbose = verbose
       @story_id = story_id
-      @task_id = task_id
+      @task_id = task_id || recover_urgent_pin
       @ignore_quota = ignore_quota
     end
 
@@ -50,6 +50,14 @@ module McptaskRunner
       return if VALID_HOW_VALUES.include?(how)
 
       raise ArgumentError, "Invalid 'how' value: #{how}. Must be one of: #{VALID_HOW_VALUES.join(', ')}"
+    end
+
+    def recover_urgent_pin
+      pinned = read_urgent_pin
+      return nil unless pinned
+
+      Logger.info_stdout("[WorkLoop] Recovered urgent pin from previous run: piece ##{pinned}")
+      pinned
     end
 
     def flag_builder_crash(error)

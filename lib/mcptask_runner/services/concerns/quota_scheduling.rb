@@ -38,9 +38,7 @@ module McptaskRunner
         return if DailyScheduler.new(task_results: []).can_work_today?
 
         Logger.info_stdout('[WorkLoop] Cannot work today (quota is 0 or weekend), waiting until next business day...')
-        @builder&.set_status(:waiting)
-        EventStream.emit_snapshot(@builder.to_h, force: true) if @builder
-        WaitingStrategy.new.wait_until_next_day
+        WaitingStrategy.new.wait_until_next_day(builder: @builder)
       end
 
       def handle_no_tasks_with_wait(wait_method, mode_label)
@@ -49,9 +47,7 @@ module McptaskRunner
           return false
         end
 
-        @builder&.set_status(:waiting)
-        EventStream.emit_snapshot(@builder.to_h, force: true) if @builder
-        WaitingStrategy.new.send(wait_method)
+        WaitingStrategy.new.send(wait_method, builder: @builder)
 
         if end_of_workday?
           Logger.info_stdout("[WorkLoop] Now past end of workday (18:00), stopping #{mode_label}")
@@ -74,9 +70,7 @@ module McptaskRunner
         return if scheduler.should_continue_working?
 
         Logger.info_stdout('[WorkLoop] Daily quota exceeded, waiting until next day...')
-        @builder&.set_status(:waiting)
-        EventStream.emit_snapshot(@builder.to_h, force: true) if @builder
-        WaitingStrategy.new.wait_until_next_day
+        WaitingStrategy.new.wait_until_next_day(builder: @builder)
       end
     end
   end
