@@ -4,7 +4,8 @@ require 'fileutils'
 
 module McptaskRunner
   module Concerns
-    # Restart-safe pin for urgent bug task_id returned by child Claude (status=urgent_bug_pending).
+    # Restart-safe pin for urgent bug task_id returned by child Claude
+    # (status=urgent_bug_pending or status=preexisting_test_errors — both create urgent bugs).
     # Without it, mcptask.online @next keeps returning the interrupted task and the runner
     # cycles forever instead of switching to the newly created bug.
     module UrgentBugPin

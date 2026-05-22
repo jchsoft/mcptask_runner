@@ -193,7 +193,8 @@ module McptaskRunner
              description: failing tests, errors, branch/commit, interrupted task ID
         4. git checkout main (keep feature branch)
         5. Status "preexisting_test_errors"
-        6. Do NOT fix them — only create bug task
+        6. Add field "bug_task_id": <relative_id of the urgent bug task you created> — REQUIRED so runner pins the new bug
+        7. Do NOT fix them — only create bug task
       INSTRUCTION
     end
 

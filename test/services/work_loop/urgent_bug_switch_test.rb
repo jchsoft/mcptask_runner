@@ -192,4 +192,41 @@ class WorkLoopUrgentBugSwitchTest < Minitest::Test
     assert_equal '600', File.read(pin_path).strip
     assert_equal 600, loop_instance.instance_variable_get(:@task_id)
   end
+
+  def test_pin_written_when_preexisting_test_errors
+    loop_instance = McptaskRunner::WorkLoop.new
+    loop_instance.define_singleton_method(:current_git_branch) { 'main' }
+
+    result = { 'status' => 'preexisting_test_errors', 'bug_task_id' => 10435 }
+    loop_instance.send(:switch_to_main_if_urgent_bug, result)
+
+    assert File.exist?(pin_path), 'preexisting_test_errors must also pin the new bug'
+    assert_equal '10435', File.read(pin_path).strip
+    assert_equal 10435, loop_instance.instance_variable_get(:@task_id)
+  end
+
+  def test_preexisting_test_errors_switches_to_main_from_feature_branch
+    checkout_invoked = false
+    loop_instance = McptaskRunner::WorkLoop.new
+    loop_instance.define_singleton_method(:current_git_branch) { 'fix/10411-runner-heartbeat-pulse' }
+    loop_instance.define_singleton_method(:checkout_main_branch) { checkout_invoked = true; [true, ''] }
+
+    result = { 'status' => 'preexisting_test_errors', 'bug_task_id' => 10435 }
+    loop_instance.send(:switch_to_main_if_urgent_bug, result)
+
+    assert checkout_invoked
+    assert_equal 'preexisting_test_errors', result['status']
+    assert File.exist?(pin_path)
+  end
+
+  def test_release_urgent_pin_if_done_keeps_pin_on_cascading_preexisting_test_errors
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, '500')
+    loop_instance = McptaskRunner::WorkLoop.new
+    loop_instance.instance_variable_set(:@task_id, 500)
+
+    loop_instance.send(:release_urgent_pin_if_done, 500, { 'status' => 'preexisting_test_errors', 'bug_task_id' => 600 })
+
+    assert File.exist?(pin_path), 'cascading preexisting bug must leave pin in place (switch_to_main re-pins to new id)'
+  end
 end

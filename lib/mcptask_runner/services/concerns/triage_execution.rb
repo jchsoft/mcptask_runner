@@ -10,6 +10,11 @@ module McptaskRunner
     module TriageExecution
       include UrgentBugPin
 
+      # Statuses that mean child created an urgent bug + checked out main.
+      # Both must pin so next triage targets the new bug instead of cycling on
+      # mcptask @next, which still returns the interrupted task.
+      URGENT_BUG_PIN_STATUSES = %w[urgent_bug_pending preexisting_test_errors].freeze
+
       STORY_EXECUTOR_MAP = {
         ClaudeCode::Honest => ClaudeCode::StoryManual,
         ClaudeCode::TodayAutoSquash => ClaudeCode::StoryAutoSquash,
@@ -83,7 +88,7 @@ module McptaskRunner
       # switch_to_main_if_urgent_bug, which overwrote the pin with the new bug_task_id.
       def release_urgent_pin_if_done(task_id, result)
         return unless result.is_a?(Hash)
-        return if result['status'] == 'urgent_bug_pending'
+        return if URGENT_BUG_PIN_STATUSES.include?(result['status'])
         return unless read_urgent_pin == task_id
 
         clear_urgent_pin
@@ -98,12 +103,13 @@ module McptaskRunner
         { 'status' => 'quota_exceeded_mid_task', 'task_id' => task_id }
       end
 
-      # Safety net: when child Claude returns urgent_bug_pending while still on a feature branch,
-      # the next triage's branch detection would re-pick the interrupted task instead of the urgent bug.
-      # Switch to main so triage falls through to TaskDiscovery (or @next-based queue) and picks the bug.
-      # If checkout fails (uncommitted changes), reclassify status so the loop aborts cleanly.
+      # Safety net: when child Claude returns urgent_bug_pending OR preexisting_test_errors while
+      # still on a feature branch, the next triage's branch detection would re-pick the interrupted
+      # task instead of the urgent bug. Switch to main so triage falls through to TaskDiscovery
+      # (or @next-based queue) and picks the bug. If checkout fails (uncommitted changes),
+      # reclassify status so the loop aborts cleanly.
       def switch_to_main_if_urgent_bug(result)
-        return result unless result.is_a?(Hash) && result['status'] == 'urgent_bug_pending'
+        return result unless result.is_a?(Hash) && URGENT_BUG_PIN_STATUSES.include?(result['status'])
 
         branch = current_git_branch
         if branch.empty? || %w[main master].include?(branch)
