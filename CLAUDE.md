@@ -17,8 +17,8 @@
 - **No direct `ReadMcpResourceTool`** for search — too verbose in context
 
 ## mcptask.online
-- Project name is: mcptask.online
-- project_relative_id=7
+- Project name is: "McpTask rails runner"
+- project_relative_id=69
 - account_code: `jchsoft`
 
 ## Large File Token Cost Prevention
