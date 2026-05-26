@@ -9,7 +9,7 @@ class WorkLoopQuotaPrecheckTest < Minitest::Test
   def quota_exceeded_triage_mock(task_id: 123)
     mock = Object.new
     mock.define_singleton_method(:run) do
-      { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => task_id,
+      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => task_id,
         'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 22.3, 'task_estimated' => 2 } }
     end
     mock
@@ -53,7 +53,7 @@ class WorkLoopQuotaPrecheckTest < Minitest::Test
   def triage_status_quota_exceeded_mock
     mock = Object.new
     mock.define_singleton_method(:run) do
-      { 'status' => 'quota_exceeded', 'recommended_model' => 'opus', 'task_id' => 0,
+      { 'status' => 'quota_exceeded', 'recommended_model' => 'genius', 'task_id' => 0,
         'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 9, 'task_estimated' => 0 } }
     end
     mock
@@ -76,7 +76,7 @@ class WorkLoopQuotaPrecheckTest < Minitest::Test
 
     triage = Object.new
     triage.define_singleton_method(:run) do
-      { 'status' => 'quota_exceeded', 'recommended_model' => 'opus', 'task_id' => 555,
+      { 'status' => 'quota_exceeded', 'recommended_model' => 'genius', 'task_id' => 555,
         'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 9, 'task_estimated' => 0 } }
     end
 
@@ -152,10 +152,10 @@ class WorkLoopQuotaPrecheckTest < Minitest::Test
     triage.define_singleton_method(:run) do
       call_count[0] += 1
       if call_count[0] == 1
-        { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 123,
+        { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 123,
           'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 0, 'task_estimated' => 2 } }
       else
-        { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 456,
+        { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 456,
           'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 22.3, 'task_estimated' => 2 } }
       end
     end

@@ -6,40 +6,40 @@ require_relative 'triage_test_helper'
 class WorkLoopTriageTest < Minitest::Test
   include TriageTestHelper
 
-  def test_extract_triage_model_passes_opus_through
+  def test_extract_triage_model_passes_genius_through
     loop_instance = McptaskRunner::WorkLoop.new
-    result = loop_instance.send(:extract_triage_model, { 'recommended_model' => 'opus' })
-    assert_equal 'opus', result
+    result = loop_instance.send(:extract_triage_model, { 'recommended_model' => 'genius' })
+    assert_equal 'genius', result
   end
 
-  def test_extract_triage_model_maps_sonnet_to_sonnet
+  def test_extract_triage_model_maps_smart_to_smart
     loop_instance = McptaskRunner::WorkLoop.new
-    result = loop_instance.send(:extract_triage_model, { 'recommended_model' => 'sonnet' })
-    assert_equal 'sonnet', result
+    result = loop_instance.send(:extract_triage_model, { 'recommended_model' => 'smart' })
+    assert_equal 'smart', result
   end
 
-  def test_extract_triage_model_accepts_haiku
+  def test_extract_triage_model_accepts_primitive
     loop_instance = McptaskRunner::WorkLoop.new
-    result = loop_instance.send(:extract_triage_model, { 'recommended_model' => 'haiku' })
-    assert_equal 'haiku', result
+    result = loop_instance.send(:extract_triage_model, { 'recommended_model' => 'primitive' })
+    assert_equal 'primitive', result
   end
 
-  def test_extract_triage_model_defaults_to_opus_for_unknown
+  def test_extract_triage_model_defaults_to_genius_for_unknown
     loop_instance = McptaskRunner::WorkLoop.new
     result = loop_instance.send(:extract_triage_model, { 'recommended_model' => 'gpt4' })
-    assert_equal 'opus', result
+    assert_equal 'genius', result
   end
 
-  def test_extract_triage_model_defaults_to_opus_for_nil
+  def test_extract_triage_model_defaults_to_genius_for_nil
     loop_instance = McptaskRunner::WorkLoop.new
     result = loop_instance.send(:extract_triage_model, { 'recommended_model' => nil })
-    assert_equal 'opus', result
+    assert_equal 'genius', result
   end
 
   def test_triage_no_more_tasks_short_circuits
     no_tasks_mock = Object.new
     def no_tasks_mock.run
-      { 'status' => 'no_more_tasks', 'recommended_model' => 'opus' }
+      { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' }
     end
 
     executor_called = false
@@ -84,7 +84,7 @@ class WorkLoopTriageTest < Minitest::Test
     triage_kwargs = nil
     mock = Object.new
     def mock.run
-      { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 9508,
+      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 9508,
         'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 0 } }
     end
 
@@ -108,7 +108,7 @@ class WorkLoopTriageTest < Minitest::Test
   def test_triage_passes_model_override_to_executor
     triage_result_mock = Object.new
     def triage_result_mock.run
-      { 'status' => 'success', 'recommended_model' => 'sonnet', 'task_id' => 999,
+      { 'status' => 'success', 'recommended_model' => 'smart', 'task_id' => 999,
         'resuming' => false, 'hours' => { 'per_day' => 8, 'task_estimated' => 1, 'already_worked' => 0 } }
     end
 
@@ -123,7 +123,7 @@ class WorkLoopTriageTest < Minitest::Test
         loop_instance = McptaskRunner::WorkLoop.new
         loop_instance.execute(:once_auto_squash)
 
-        assert_equal 'sonnet', received_kwargs[:model_override]
+        assert_equal 'smart', received_kwargs[:model_override]
         assert_equal 999, received_kwargs[:task_id]
         assert_equal false, received_kwargs[:resuming]
       end
@@ -133,7 +133,7 @@ class WorkLoopTriageTest < Minitest::Test
   def test_triage_explicit_task_id_not_overridden_by_triage
     triage_result_mock = Object.new
     def triage_result_mock.run
-      { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 9809,
+      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 9809,
         'resuming' => false, 'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 0 } }
     end
 
@@ -157,7 +157,7 @@ class WorkLoopTriageTest < Minitest::Test
   def test_triage_passes_resuming_true_to_executor
     triage_result_mock = Object.new
     def triage_result_mock.run
-      { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 9508,
+      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 9508,
         'resuming' => true, 'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 1 } }
     end
 
@@ -178,10 +178,10 @@ class WorkLoopTriageTest < Minitest::Test
     end
   end
 
-  def test_resuming_upgrades_sonnet_to_opus
+  def test_resuming_upgrades_smart_to_genius
     triage_result_mock = Object.new
     def triage_result_mock.run
-      { 'status' => 'success', 'recommended_model' => 'sonnet', 'task_id' => 9508,
+      { 'status' => 'success', 'recommended_model' => 'smart', 'task_id' => 9508,
         'resuming' => true, 'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 1 } }
     end
 
@@ -196,17 +196,17 @@ class WorkLoopTriageTest < Minitest::Test
         loop_instance = McptaskRunner::WorkLoop.new
         loop_instance.execute(:once)
 
-        assert_equal 'opus', received_kwargs[:model_override],
-                     'Resuming task must run on opus even when triage recommended sonnet'
+        assert_equal 'genius', received_kwargs[:model_override],
+                     'Resuming task must run on genius even when triage recommended sonnet'
         assert_equal true, received_kwargs[:resuming]
       end
     end
   end
 
-  def test_resuming_upgrades_haiku_to_opus
+  def test_resuming_upgrades_haiku_to_genius
     triage_result_mock = Object.new
     def triage_result_mock.run
-      { 'status' => 'success', 'recommended_model' => 'haiku', 'task_id' => 9508,
+      { 'status' => 'success', 'recommended_model' => 'primitive', 'task_id' => 9508,
         'resuming' => true, 'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 1 } }
     end
 
@@ -221,15 +221,15 @@ class WorkLoopTriageTest < Minitest::Test
         loop_instance = McptaskRunner::WorkLoop.new
         loop_instance.execute(:once)
 
-        assert_equal 'opus', received_kwargs[:model_override]
+        assert_equal 'genius', received_kwargs[:model_override]
       end
     end
   end
 
-  def test_resuming_false_keeps_sonnet
+  def test_resuming_false_keeps_smart
     triage_result_mock = Object.new
     def triage_result_mock.run
-      { 'status' => 'success', 'recommended_model' => 'sonnet', 'task_id' => 9508,
+      { 'status' => 'success', 'recommended_model' => 'smart', 'task_id' => 9508,
         'resuming' => false, 'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 1 } }
     end
 
@@ -244,7 +244,7 @@ class WorkLoopTriageTest < Minitest::Test
         loop_instance = McptaskRunner::WorkLoop.new
         loop_instance.execute(:once)
 
-        assert_equal 'sonnet', received_kwargs[:model_override],
+        assert_equal 'smart', received_kwargs[:model_override],
                      'Fresh tasks must keep triage recommendation'
       end
     end
@@ -253,11 +253,11 @@ class WorkLoopTriageTest < Minitest::Test
   def test_upgrade_model_for_resume_unit
     loop_instance = McptaskRunner::WorkLoop.new
 
-    assert_equal 'opus',   loop_instance.send(:upgrade_model_for_resume, 'sonnet', true)
-    assert_equal 'opus',   loop_instance.send(:upgrade_model_for_resume, 'haiku',  true)
-    assert_equal 'opus',   loop_instance.send(:upgrade_model_for_resume, 'opus',   true)
-    assert_equal 'sonnet', loop_instance.send(:upgrade_model_for_resume, 'sonnet', false)
-    assert_equal 'haiku',  loop_instance.send(:upgrade_model_for_resume, 'haiku',  false)
+    assert_equal 'genius',   loop_instance.send(:upgrade_model_for_resume, 'smart', true)
+    assert_equal 'genius',   loop_instance.send(:upgrade_model_for_resume, 'primitive',  true)
+    assert_equal 'genius',   loop_instance.send(:upgrade_model_for_resume, 'genius',   true)
+    assert_equal 'smart', loop_instance.send(:upgrade_model_for_resume, 'smart', false)
+    assert_equal 'primitive',  loop_instance.send(:upgrade_model_for_resume, 'primitive',  false)
   end
 
   # Story detection from @next tests
@@ -288,11 +288,11 @@ class WorkLoopTriageTest < Minitest::Test
     story_triage_mock.define_singleton_method(:run) do
       call_count += 1
       if call_count <= 1
-        { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 555,
+        { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 555,
           'piece_type' => 'Story', 'story_id' => 8965,
           'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 0 } }
       else
-        { 'status' => 'no_more_tasks', 'recommended_model' => 'opus' }
+        { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' }
       end
     end
 
@@ -318,7 +318,7 @@ class WorkLoopTriageTest < Minitest::Test
   def test_story_detected_in_auto_squash_uses_story_auto_squash
     story_triage_mock = Object.new
     def story_triage_mock.run
-      { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 555,
+      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 555,
         'piece_type' => 'Story', 'story_id' => 8965,
         'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 0 } }
     end
@@ -347,7 +347,7 @@ class WorkLoopTriageTest < Minitest::Test
   def test_story_loop_first_iteration_passes_workloop_builder_to_executor
     triage_mock_obj = Object.new
     def triage_mock_obj.run
-      { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 100,
+      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 100,
         'piece_type' => 'Story', 'story_id' => 8965,
         'hours' => { 'per_day' => 8, 'task_estimated' => 1, 'already_worked' => 0 } }
     end
@@ -379,14 +379,14 @@ class WorkLoopTriageTest < Minitest::Test
       triage_call_count += 1
       case triage_call_count
       when 1
-        { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 100,
+        { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 100,
           'piece_type' => 'Story', 'story_id' => 8965,
           'hours' => { 'per_day' => 8, 'task_estimated' => 1, 'already_worked' => 0 } }
       when 2
-        { 'status' => 'success', 'recommended_model' => 'sonnet', 'task_id' => 101,
+        { 'status' => 'success', 'recommended_model' => 'smart', 'task_id' => 101,
           'hours' => { 'per_day' => 8, 'task_estimated' => 1, 'already_worked' => 1 } }
       else
-        { 'status' => 'no_more_tasks', 'recommended_model' => 'opus' }
+        { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' }
       end
     end
 
@@ -411,7 +411,7 @@ class WorkLoopTriageTest < Minitest::Test
     # When already in story mode (kwargs[:story_id] present), don't re-trigger story loop
     triage_result_mock = Object.new
     def triage_result_mock.run
-      { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 555,
+      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 555,
         'piece_type' => 'Story', 'story_id' => 8965,
         'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 0 } }
     end

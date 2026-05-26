@@ -66,7 +66,7 @@ class WorkLoopQuotaMidTaskTest < Minitest::Test
     triage = Object.new
     triage.define_singleton_method(:run) do
       triage_call_count[:n] += 1
-      { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 100 + triage_call_count[:n],
+      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 100 + triage_call_count[:n],
         'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 0, 'task_estimated' => 2 } }
     end
 

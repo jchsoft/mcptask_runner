@@ -6,7 +6,7 @@ module McptaskRunner
   module ClaudeCode
     # Handles PR review feedback - reads human reviews, creates subtasks, fixes issues
     class Review < ClaudeCodeBase
-      def model_name = "sonnet"
+      def model_name = "smart"
       def max_turns = 100
 
       private

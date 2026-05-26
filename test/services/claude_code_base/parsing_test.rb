@@ -77,13 +77,13 @@ class ClaudeCodeBaseParsingTest < Minitest::Test
   def test_parse_result_with_stream_json_wrapped_result
     base = McptaskRunner::ClaudeCodeBase.new
     base.instance_variable_set(:@text_content,
-                               'I analyzed the task.\nTASKRUNNER_RESULT: {"status": "success", "task_id": 9508, "recommended_model": "sonnet", "hours": {"per_day": 8}}')
+                               'I analyzed the task.\nTASKRUNNER_RESULT: {"status": "success", "task_id": 9508, "recommended_model": "smart", "hours": {"per_day": 8}}')
 
     result = base.send(:parse_result, 'raw stream json that does not contain marker', 1.0)
 
     assert_equal 'success', result['status']
     assert_equal 9508, result['task_id']
-    assert_equal 'sonnet', result['recommended_model']
+    assert_equal 'smart', result['recommended_model']
     assert_equal 1.0, result['hours']['task_worked']
   end
 

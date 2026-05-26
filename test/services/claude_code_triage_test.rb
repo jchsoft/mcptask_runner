@@ -7,9 +7,9 @@ class ClaudeCodeTriageTest < Minitest::Test
     assert McptaskRunner::ClaudeCode::Triage < McptaskRunner::ClaudeCodeBase
   end
 
-  def test_triage_uses_sonnet_model
+  def test_triage_uses_smart_model
     triage = McptaskRunner::ClaudeCode::Triage.new
-    assert_equal 'sonnet', triage.send(:model_name)
+    assert_equal 'smart', triage.send(:model_name)
   end
 
   def test_triage_does_not_accept_edits
@@ -29,8 +29,8 @@ class ClaudeCodeTriageTest < Minitest::Test
         instructions = triage.send(:build_instructions)
 
         assert_includes instructions, 'recommended_model'
-        assert_includes instructions, 'opus'
-        assert_includes instructions, 'sonnet'
+        assert_includes instructions, 'genius'
+        assert_includes instructions, 'smart'
         assert_includes instructions, 'TASKRUNNER_RESULT'
       end
     end
@@ -102,14 +102,14 @@ class ClaudeCodeTriageTest < Minitest::Test
     end
   end
 
-  def test_instructions_allow_opus_sonnet_or_haiku
+  def test_instructions_allow_genius_smart_or_primitive
     File.stub :exist?, true do
       File.stub :read, 'project_relative_id=7' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
-        assert_includes instructions, 'opus'
-        assert_includes instructions, '"haiku": trivial'
+        assert_includes instructions, 'genius'
+        assert_includes instructions, '"primitive": trivial'
       end
     end
   end
@@ -129,7 +129,7 @@ class ClaudeCodeTriageTest < Minitest::Test
     end
   end
 
-  def test_instructions_force_opus_on_resume
+  def test_instructions_force_genius_on_resume
     File.stub :exist?, true do
       File.stub :read, 'project_relative_id=7' do
         instructions = McptaskRunner::ClaudeCode::Triage.new.send(:build_instructions)
@@ -140,29 +140,29 @@ class ClaudeCodeTriageTest < Minitest::Test
     end
   end
 
-  def test_story_triage_instructions_force_opus_on_resume
+  def test_story_triage_instructions_force_genius_on_resume
     instructions = McptaskRunner::ClaudeCode::Triage.new(story_id: 8965).send(:build_instructions)
 
     assert_includes instructions, 'RESUMING OVERRIDE'
   end
 
-  def test_instructions_default_to_sonnet
+  def test_instructions_default_to_smart
     File.stub :exist?, true do
       File.stub :read, 'project_relative_id=7' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
-        assert_includes instructions, '"sonnet" (DEFAULT)'
+        assert_includes instructions, '"smart" (DEFAULT)'
         assert_includes instructions, 'DURATION HINT'
       end
     end
   end
 
-  def test_story_triage_defaults_to_sonnet
+  def test_story_triage_defaults_to_smart
     triage = McptaskRunner::ClaudeCode::Triage.new(story_id: 8965)
     instructions = triage.send(:build_instructions)
 
-    assert_includes instructions, '"sonnet" (DEFAULT)'
+    assert_includes instructions, '"smart" (DEFAULT)'
     assert_includes instructions, 'DURATION HINT'
   end
 
@@ -183,8 +183,8 @@ class ClaudeCodeTriageTest < Minitest::Test
     instructions = triage.send(:build_instructions)
 
     assert_includes instructions, 'recommended_model'
-    assert_includes instructions, 'opus'
-    assert_includes instructions, 'sonnet'
+    assert_includes instructions, 'genius'
+    assert_includes instructions, 'smart'
     assert_includes instructions, 'TASKRUNNER_RESULT'
   end
 

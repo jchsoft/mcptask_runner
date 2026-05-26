@@ -44,7 +44,7 @@ module McptaskRunner
                  Extract "hour_goal" → per_day. "worked_out" → already_worked.
                  per_day=0 is VALID (holiday/non-working day), keep the 0. Only null=failure → retry tool call.
               2. worked_out >= hour_goal → STOP. TASKRUNNER_RESULT:
-                 status="quota_exceeded", recommended_model="opus", task_id=0, resuming=false
+                 status="quota_exceeded", recommended_model="genius", task_id=0, resuming=false
                  hours: {per_day: <hour_goal>, task_estimated: 0, already_worked: <worked_out>}
               3. worked_out < hour_goal → STEP 1
             STEP
@@ -52,17 +52,17 @@ module McptaskRunner
 
           def model_selection_rules
             <<~RULES.strip
-              MODEL SELECTION (pick one: "opus"/"sonnet"/"haiku"):
+              MODEL SELECTION (pick one: "genius"/"smart"/"primitive"):
 
-              RESUMING OVERRIDE: if resuming=true → recommended_model="opus" ALWAYS (previous attempt didn't finish — needs strongest model regardless of complexity)
+              RESUMING OVERRIDE: if resuming=true → recommended_model="genius" ALWAYS (previous attempt didn't finish — needs strongest model regardless of complexity)
 
-              "haiku": trivial — typo fix, single CSS change, one-line config
+              "primitive": trivial — typo fix, single CSS change, one-line config
 
-              "opus" ONLY: UI elements/improvements/beautification, complex architecture (models+associations, multi-service, migrations w/ data transforms), security (auth/encryption), ambiguous requirements, Story type, FIXING FAILING TESTS / debugging test failures (red→green, flaky tests, CI-failing specs — Sonnet historically struggles here)
+              "genius" ONLY: UI elements/improvements/beautification, complex architecture (models+associations, multi-service, migrations w/ data transforms), security (auth/encryption), ambiguous requirements, Story type, FIXING FAILING TESTS / debugging test failures (red→green, flaky tests, CI-failing specs — Sonnet historically struggles here)
 
-              "sonnet" (DEFAULT): everything else — CRUD, refactoring, bug fixes, writing NEW tests, simple frontend, validations/scopes/callbacks, config/locale/docs, API endpoints
+              "smart" (DEFAULT): everything else — CRUD, refactoring, bug fixes, writing NEW tests, simple frontend, validations/scopes/callbacks, config/locale/docs, API endpoints
 
-              DURATION HINT: <1 hour → lean sonnet/haiku
+              DURATION HINT: <1 hour → lean smart/primitive
             RULES
           end
 

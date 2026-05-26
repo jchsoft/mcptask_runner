@@ -4,7 +4,7 @@ require_relative '../claude_code_base'
 
 module McptaskRunner
   module ClaudeCode
-    # Triage step — Sonnet call that analyzes task complexity and recommends optimal model.
+    # Triage step — smart call that analyzes task complexity and recommends optimal model.
     # Sonnet (was Haiku before 2026-05-01): branchy prompt + tool-call ordering caused Haiku
     # hallucinations (wrong task_id, skipped quota tool). Triage cost is negligible vs the
     # task it gates, so reliability wins.
@@ -19,7 +19,7 @@ module McptaskRunner
         @ignore_quota = ignore_quota
       end
 
-      def model_name = 'sonnet'
+      def model_name = 'smart'
       def max_turns = 30
 
       private

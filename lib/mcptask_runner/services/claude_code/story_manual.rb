@@ -16,7 +16,7 @@ module McptaskRunner
         @skip_story_load = skip_story_load
       end
 
-      def model_name = "opus"
+      def model_name = "genius"
       def max_turns = 250
 
       private

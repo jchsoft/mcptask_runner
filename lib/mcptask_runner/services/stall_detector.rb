@@ -10,8 +10,8 @@ module McptaskRunner
   # raising the terminal error. Pure data; no IO, no threading, no Claude knowledge.
   #
   # Composes with TriageExecution#upgrade_model_for_resume — a stalled run terminates with
-  # status='stalled_for_opus' and the task stays in_progress in mcptask, so the next triage
-  # picks it up as resuming=true and forces Opus.
+  # status='stalled_for_genius' and the task stays in_progress in mcptask, so the next triage
+  # picks it up as resuming=true and forces genius.
   class StallDetector
     Stall = Struct.new(:reason, :signature, :count, :detail, keyword_init: true)
 

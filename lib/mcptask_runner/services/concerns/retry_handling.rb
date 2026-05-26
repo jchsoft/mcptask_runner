@@ -91,19 +91,19 @@ module McptaskRunner
       end
 
       # Stall is terminal for this run but the mcptask piece stays in_progress.
-      # Status='stalled_for_opus' is intentionally NOT 'error' so Decider#tasks_failed?
-      # does not break the WorkLoop — next triage iteration resumes with Opus.
+      # Status='stalled_for_genius' is intentionally NOT 'error' so Decider#tasks_failed?
+      # does not break the WorkLoop — next triage iteration resumes with genius.
       def handle_stalled(stall, start_time)
         elapsed_hours = ((Time.now - start_time) / 3600.0).round(2)
         Logger.error "[#{@log_tag}] Stall terminal: #{stall.reason} (#{stall.count}×) sig=#{stall.signature} " \
-                     "after #{elapsed_hours}h — task stays in_progress for Opus resume"
+                     "after #{elapsed_hours}h — task stays in_progress for genius resume"
         {
-          'status' => 'stalled_for_opus',
+          'status' => 'stalled_for_genius',
           'reason' => stall.reason.to_s,
           'signature' => stall.signature,
           'count' => stall.count,
           'detail' => stall.detail,
-          'message' => "Stalled (#{stall.reason}); next triage will resume with Opus",
+          'message' => "Stalled (#{stall.reason}); next triage will resume with genius",
           'hours' => { 'task_worked' => elapsed_hours }
         }
       end

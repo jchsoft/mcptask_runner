@@ -13,7 +13,7 @@ module McptaskRunner
         @task_id = task_id
       end
 
-      def model_name = "opus"
+      def model_name = "genius"
       def max_turns = 200
 
       private

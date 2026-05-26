@@ -104,13 +104,13 @@ class ClaudeCodeBaseStallTest < Minitest::Test
     assert base.instance_variable_get(:@state).stopping
   end
 
-  def test_handle_stalled_returns_stalled_for_opus_status
+  def test_handle_stalled_returns_stalled_for_genius_status
     base = McptaskRunner::ClaudeCodeBase.new
     stall = McptaskRunner::StallDetector::Stall.new(reason: :edit_failures, signature: 'sig', count: 3, detail: nil)
 
     result = base.send(:handle_stalled, stall, Time.now - 600)
 
-    assert_equal 'stalled_for_opus', result['status']
+    assert_equal 'stalled_for_genius', result['status']
     refute_equal 'error', result['status'], 'Must not return error — Decider would break the loop'
     assert_equal 'edit_failures', result['reason']
     assert_equal 'sig', result['signature']

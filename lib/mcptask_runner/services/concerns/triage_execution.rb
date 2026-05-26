@@ -187,21 +187,21 @@ module McptaskRunner
       def extract_triage_model(triage_result)
         recommended = triage_result['recommended_model']
         case recommended
-        when 'sonnet', 'opus', 'haiku' then recommended
+        when 'smart', 'genius', 'primitive' then recommended
         else
-          Logger.warn("[WorkLoop] Unknown triage model '#{recommended}', defaulting to opus")
-          'opus'
+          Logger.warn("[WorkLoop] Unknown triage model '#{recommended}', defaulting to genius")
+          'genius'
         end
       end
 
       # Resuming = previous attempt did not finish (context overflow, quota cutoff, urgent_bug interrupt).
-      # Force opus on resume so a stronger model gets a shot at closing the task.
+      # Force genius on resume so a stronger model gets a shot at closing the task.
       def upgrade_model_for_resume(model, resuming)
         return model unless resuming
-        return model if model == 'opus'
+        return model if model == 'genius'
 
-        Logger.info_stdout("[WorkLoop] Resuming task — upgrading model from '#{model}' to 'opus' (previous attempt likely couldn't finish)")
-        'opus'
+        Logger.info_stdout("[WorkLoop] Resuming task — upgrading model from '#{model}' to 'genius' (previous attempt likely couldn't finish)")
+        'genius'
       end
 
       def story_executor_for(executor_class)

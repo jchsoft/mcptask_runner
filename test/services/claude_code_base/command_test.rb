@@ -5,7 +5,7 @@ require 'test_helper'
 class ClaudeCodeBaseCommandTest < Minitest::Test
   def test_build_command_without_continue_session
     base = McptaskRunner::ClaudeCodeBase.new
-    base.define_singleton_method(:model_name) { 'opus' }
+    base.define_singleton_method(:model_name) { 'genius' }
 
     cmd = base.send(:build_command, '/usr/bin/claude', 'test instructions', continue_session: false)
 
@@ -14,13 +14,13 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
     assert_includes cmd, '-p'
     assert_includes cmd, 'test instructions'
     assert_includes cmd, '--model'
-    assert_includes cmd, 'claude-opus-4-7', 'opus alias must map to pinned 200K model ID'
+    assert_includes cmd, 'claude-opus-4-7', 'genius alias must map to pinned 200K model ID'
     refute_includes cmd, 'claude-opus-4-7[1m]', 'must not request 1M context variant'
   end
 
   def test_build_command_with_continue_session
     base = McptaskRunner::ClaudeCodeBase.new
-    base.define_singleton_method(:model_name) { 'opus' }
+    base.define_singleton_method(:model_name) { 'genius' }
 
     cmd = base.send(:build_command, '/usr/bin/claude', 'test instructions', continue_session: true)
 
@@ -32,7 +32,7 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
 
   def test_build_command_omits_max_turns_when_nil
     base = McptaskRunner::ClaudeCodeBase.new
-    base.define_singleton_method(:model_name) { 'opus' }
+    base.define_singleton_method(:model_name) { 'genius' }
 
     cmd = base.send(:build_command, '/usr/bin/claude', 'test instructions', continue_session: false)
 
@@ -41,7 +41,7 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
 
   def test_build_command_includes_max_turns_when_set
     base = McptaskRunner::ClaudeCodeBase.new
-    base.define_singleton_method(:model_name) { 'opus' }
+    base.define_singleton_method(:model_name) { 'genius' }
     base.define_singleton_method(:max_turns) { 150 }
 
     cmd = base.send(:build_command, '/usr/bin/claude', 'test instructions', continue_session: false)
@@ -52,7 +52,7 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
 
   def test_effective_model_name_maps_alias_to_pinned_id
     base = McptaskRunner::ClaudeCodeBase.new
-    base.define_singleton_method(:model_name) { 'sonnet' }
+    base.define_singleton_method(:model_name) { 'smart' }
 
     assert_equal 'claude-sonnet-4-6', base.send(:effective_model_name)
   end

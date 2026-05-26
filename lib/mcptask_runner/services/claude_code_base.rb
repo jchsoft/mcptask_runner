@@ -6,6 +6,7 @@ require 'json'
 require 'securerandom'
 require 'shellwords'
 require 'timeout'
+require 'yaml'
 require_relative 'output_formatter'
 require_relative 'stall_detector'
 require_relative 'concerns/process_management'
@@ -35,7 +36,7 @@ module McptaskRunner
 
   # Raised when StallDetector flags the session as spinning (repeated failed tool calls,
   # edit-failure streak, no progress in a window). Terminal: the task stays in_progress
-  # so the next triage promotes to Opus via TriageExecution#upgrade_model_for_resume.
+  # so the next triage promotes to genius via TriageExecution#upgrade_model_for_resume.
   class StalledError < StandardError
     attr_reader :stall
 
@@ -49,7 +50,7 @@ module McptaskRunner
   # Handles common execution, streaming, and JSON parsing logic
   # Subclasses must implement:
   # - build_instructions() -> returns instruction string
-  # - model_name() -> returns the model to use (e.g., 'sonnet', 'haiku', 'opus')
+  # - model_name() -> returns the spice level (e.g., 'smart', 'primitive', 'genius')
   class ClaudeCodeBase
     include Concerns::ProcessManagement
     include Concerns::RetryHandling
@@ -60,12 +61,18 @@ module McptaskRunner
 
     # Pin to standard 200K-context model IDs (no [1m] suffix) so context overflows fail fast
     # at ~200K instead of growing to 1M across --continue retry chains.
-    # Update IDs when newer models are released.
-    MODEL_IDS = {
-      'opus' => 'claude-opus-4-7',
-      'sonnet' => 'claude-sonnet-4-6',
-      'haiku' => 'claude-haiku-4-5-20251001'
-    }.freeze
+    # Update IDs in config/models.yml when newer models are released.
+    MODELS_FILE = File.join(__dir__, '..', '..', '..', '..', 'config', 'models.yml').freeze
+
+    MODEL_IDS = if File.exist?(MODELS_FILE)
+                  YAML.load_file(MODELS_FILE).freeze
+    else
+                  {
+                    'genius' => 'claude-opus-4-7',
+                    'smart' => 'claude-sonnet-4-6',
+                    'primitive' => 'claude-haiku-4-5-20251001'
+                  }.freeze
+    end
 
     # Per-attempt streaming/termination flags. Collected into one struct so the host
     # class stays under Reek's TooManyInstanceVariables threshold.

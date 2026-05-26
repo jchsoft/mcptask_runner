@@ -114,7 +114,7 @@ module McptaskRunner
         @state.stalled = stall
         @state.stopping = true
         Logger.error "[#{@log_tag}] Stall detected: reason=#{stall.reason} signature=#{stall.signature} " \
-                     "count=#{stall.count}#{" detail=#{stall.detail}" if stall.detail} — terminating for Opus escalation"
+                     "count=#{stall.count}#{" detail=#{stall.detail}" if stall.detail} — terminating for genius escalation"
         error_msg = "#{stall.reason}: #{stall.signature} (#{stall.count}x)#{" #{stall.detail}" if stall.detail}"
         @snapshot_builder.set_status(:stalled, error_message: error_msg)
         EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)

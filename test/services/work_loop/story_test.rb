@@ -27,10 +27,10 @@ class WorkLoopStoryTest < Minitest::Test
     triage_mock_obj.define_singleton_method(:run) do
       triage_call_count[0] += 1
       if triage_call_count[0] <= 2
-        { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 456,
+        { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 456,
           'resuming' => false, 'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 0 } }
       else
-        { 'status' => 'no_more_tasks', 'recommended_model' => 'opus' }
+        { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' }
       end
     end
 
@@ -52,7 +52,7 @@ class WorkLoopStoryTest < Minitest::Test
   def test_execute_with_story_manual_stops_on_no_more_tasks
     triage_no_tasks = Object.new
     def triage_no_tasks.run
-      { 'status' => 'no_more_tasks', 'recommended_model' => 'opus' }
+      { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' }
     end
 
     McptaskRunner::ClaudeCode::Triage.stub(:new, triage_no_tasks) do
@@ -102,10 +102,10 @@ class WorkLoopStoryTest < Minitest::Test
     triage_mock_obj.define_singleton_method(:run) do
       triage_call_count[0] += 1
       if triage_call_count[0] <= 2
-        { 'status' => 'success', 'recommended_model' => 'sonnet', 'task_id' => 456,
+        { 'status' => 'success', 'recommended_model' => 'smart', 'task_id' => 456,
           'resuming' => false, 'hours' => { 'per_day' => 8, 'task_estimated' => 2, 'already_worked' => 0 } }
       else
-        { 'status' => 'no_more_tasks', 'recommended_model' => 'opus' }
+        { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' }
       end
     end
 
@@ -127,7 +127,7 @@ class WorkLoopStoryTest < Minitest::Test
   def test_execute_with_story_auto_squash_stops_on_no_more_tasks
     triage_no_tasks = Object.new
     def triage_no_tasks.run
-      { 'status' => 'no_more_tasks', 'recommended_model' => 'opus' }
+      { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' }
     end
 
     McptaskRunner::ClaudeCode::Triage.stub(:new, triage_no_tasks) do
@@ -232,7 +232,7 @@ class WorkLoopStoryTest < Minitest::Test
     triage_kwargs = nil
     triage_mock_obj = Object.new
     def triage_mock_obj.run
-      { 'status' => 'success', 'recommended_model' => 'sonnet', 'task_id' => 789,
+      { 'status' => 'success', 'recommended_model' => 'smart', 'task_id' => 789,
         'resuming' => false, 'hours' => { 'per_day' => 8, 'task_estimated' => 1, 'already_worked' => 0 } }
     end
 
@@ -289,10 +289,10 @@ class WorkLoopStoryTest < Minitest::Test
     triage_mock_obj.define_singleton_method(:run) do
       triage_call_count[0] += 1
       if triage_call_count[0] <= 2
-        { 'status' => 'success', 'recommended_model' => 'opus', 'task_id' => 456,
+        { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 456,
           'resuming' => false, 'hours' => { 'per_day' => 8, 'task_estimated' => 8, 'already_worked' => 0 } }
       else
-        { 'status' => 'no_more_tasks', 'recommended_model' => 'opus' }
+        { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' }
       end
     end
 
@@ -377,7 +377,7 @@ class WorkLoopStoryTest < Minitest::Test
   def test_story_manual_triage_passes_model_and_task_id_to_executor
     triage_mock_obj = Object.new
     def triage_mock_obj.run
-      { 'status' => 'success', 'recommended_model' => 'sonnet', 'task_id' => 789,
+      { 'status' => 'success', 'recommended_model' => 'smart', 'task_id' => 789,
         'resuming' => false, 'hours' => { 'per_day' => 8, 'task_estimated' => 1, 'already_worked' => 0 } }
     end
 
@@ -392,7 +392,7 @@ class WorkLoopStoryTest < Minitest::Test
         loop_instance = McptaskRunner::WorkLoop.new(story_id: 555)
         loop_instance.execute(:story_manual)
 
-        assert_equal 'sonnet', received_kwargs[:model_override]
+        assert_equal 'smart', received_kwargs[:model_override]
         assert_equal 789, received_kwargs[:task_id]
         assert_equal 555, received_kwargs[:story_id]
         assert_equal false, received_kwargs[:resuming]

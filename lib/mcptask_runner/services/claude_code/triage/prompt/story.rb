@@ -24,7 +24,7 @@ module McptaskRunner
               1. Read mcptask://pieces/jchsoft/#{@story_id}
               2. Find subtasks
               3. First task: NOT "Schváleno"/"Hotovo?", progress<100
-              4. None found → status "no_more_tasks", recommended_model="opus"
+              4. None found → status "no_more_tasks", recommended_model="genius"
               5. Remember task relative_id
 
               STEP 2 - FETCH TASK: Read mcptask://pieces/jchsoft/<task_relative_id>
@@ -34,9 +34,9 @@ module McptaskRunner
               #{model_selection_rules}
 
               #{result_format_instruction(
-                '"status": "success", "recommended_model": "sonnet", "task_id": 123, "task_name": "Subtask title", "resuming": false, "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}',
+                '"status": "success", "recommended_model": "smart", "task_id": 123, "task_name": "Subtask title", "resuming": false, "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}',
                 extra_rules: [
-                  'recommended_model: "opus"/"sonnet"/"haiku" (lowercase)',
+                  'recommended_model: "genius"/"smart"/"primitive" (lowercase)',
                   'task_id = subtask relative_id (NOT story)',
                   'task_name = subtask title; empty string if missing',
                   'resuming = false (story triage = fresh tasks)',

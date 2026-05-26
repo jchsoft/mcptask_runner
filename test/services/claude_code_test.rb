@@ -12,9 +12,9 @@ class ClaudeCodeHonestTest < Minitest::Test
     assert McptaskRunner::ClaudeCode::Honest < McptaskRunner::ClaudeCodeBase
   end
 
-  def test_honest_uses_opus_model
+  def test_honest_uses_genius_model
     honest = McptaskRunner::ClaudeCode::Honest.new
-    assert_equal 'opus', honest.send(:model_name)
+    assert_equal 'genius', honest.send(:model_name)
   end
 
   def test_honest_accepts_edits
@@ -127,7 +127,7 @@ class ClaudeCodeDryTest < Minitest::Test
 
   def test_dry_uses_haiku_model
     dry = McptaskRunner::ClaudeCode::Dry.new
-    assert_equal 'haiku', dry.send(:model_name)
+    assert_equal 'primitive', dry.send(:model_name)
   end
 
   def test_dry_does_not_accept_edits
@@ -224,7 +224,7 @@ class ClaudeCodeReviewTest < Minitest::Test
 
   def test_review_uses_sonnet_model
     review = McptaskRunner::ClaudeCode::Review.new
-    assert_equal 'sonnet', review.send(:model_name)
+    assert_equal 'smart', review.send(:model_name)
   end
 
   def test_review_accepts_edits
@@ -326,7 +326,7 @@ class ClaudeCodeReviewsTest < Minitest::Test
 
   def test_reviews_uses_sonnet_model
     reviews = McptaskRunner::ClaudeCode::Reviews.new
-    assert_equal 'sonnet', reviews.send(:model_name)
+    assert_equal 'smart', reviews.send(:model_name)
   end
 
   def test_reviews_accepts_edits
@@ -418,9 +418,9 @@ class ClaudeCodeStoryAutoSquashTest < Minitest::Test
     assert McptaskRunner::ClaudeCode::StoryAutoSquash < McptaskRunner::ClaudeCode::AutoSquashBase
   end
 
-  def test_story_auto_squash_uses_opus_model
+  def test_story_auto_squash_uses_genius_model
     story_auto_squash = McptaskRunner::ClaudeCode::StoryAutoSquash.new(story_id: 123, task_id: 456)
-    assert_equal 'opus', story_auto_squash.send(:model_name)
+    assert_equal 'genius', story_auto_squash.send(:model_name)
   end
 
   def test_story_auto_squash_accepts_edits
@@ -543,9 +543,9 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
     assert McptaskRunner::ClaudeCode::TodayAutoSquash < McptaskRunner::ClaudeCode::AutoSquashBase
   end
 
-  def test_today_auto_squash_uses_opus_model
+  def test_today_auto_squash_uses_genius_model
     today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
-    assert_equal 'opus', today_auto_squash.send(:model_name)
+    assert_equal 'genius', today_auto_squash.send(:model_name)
   end
 
   def test_today_auto_squash_accepts_edits
@@ -694,9 +694,9 @@ class ClaudeCodeStoryManualTest < Minitest::Test
     assert McptaskRunner::ClaudeCode::StoryManual < McptaskRunner::ClaudeCodeBase
   end
 
-  def test_story_manual_uses_opus_model
+  def test_story_manual_uses_genius_model
     story_manual = McptaskRunner::ClaudeCode::StoryManual.new(story_id: 123, task_id: 456)
-    assert_equal 'opus', story_manual.send(:model_name)
+    assert_equal 'genius', story_manual.send(:model_name)
   end
 
   def test_story_manual_accepts_edits
@@ -814,9 +814,9 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
     assert McptaskRunner::ClaudeCode::QueueAutoSquash < McptaskRunner::ClaudeCode::AutoSquashBase
   end
 
-  def test_queue_auto_squash_uses_opus_model
+  def test_queue_auto_squash_uses_genius_model
     queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
-    assert_equal 'opus', queue_auto_squash.send(:model_name)
+    assert_equal 'genius', queue_auto_squash.send(:model_name)
   end
 
   def test_queue_auto_squash_accepts_edits
@@ -981,9 +981,9 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
     assert McptaskRunner::ClaudeCode::OnceAutoSquash < McptaskRunner::ClaudeCode::AutoSquashBase
   end
 
-  def test_once_auto_squash_uses_opus_model
+  def test_once_auto_squash_uses_genius_model
     once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
-    assert_equal 'opus', once_auto_squash.send(:model_name)
+    assert_equal 'genius', once_auto_squash.send(:model_name)
   end
 
   def test_once_auto_squash_accepts_edits
@@ -1220,9 +1220,9 @@ class ClaudeCodeTaskManualTest < Minitest::Test
     assert McptaskRunner::ClaudeCode::TaskManual < McptaskRunner::ClaudeCodeBase
   end
 
-  def test_task_manual_uses_opus_model
+  def test_task_manual_uses_genius_model
     task_manual = McptaskRunner::ClaudeCode::TaskManual.new(task_id: 123)
-    assert_equal 'opus', task_manual.send(:model_name)
+    assert_equal 'genius', task_manual.send(:model_name)
   end
 
   def test_task_manual_accepts_edits
@@ -1330,9 +1330,9 @@ class ClaudeCodeTaskAutoSquashTest < Minitest::Test
     assert McptaskRunner::ClaudeCode::TaskAutoSquash < McptaskRunner::ClaudeCode::AutoSquashBase
   end
 
-  def test_task_auto_squash_uses_opus_model
+  def test_task_auto_squash_uses_genius_model
     task_auto_squash = McptaskRunner::ClaudeCode::TaskAutoSquash.new(task_id: 123)
-    assert_equal 'opus', task_auto_squash.send(:model_name)
+    assert_equal 'genius', task_auto_squash.send(:model_name)
   end
 
   def test_task_auto_squash_accepts_edits
