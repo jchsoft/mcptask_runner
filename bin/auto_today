@@ -1,0 +1,15 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+require "bundler/setup"
+require "active_support"
+require "active_support/core_ext/time"
+require "active_support/core_ext/numeric/time"
+require "mcptask_runner"
+
+puts "=" * 80
+puts "[McptaskRunner] Version: #{McptaskRunner::VERSION}"
+puts "=" * 80
+
+McptaskRunner::WorkLoop.new.execute(:today_auto_squash)

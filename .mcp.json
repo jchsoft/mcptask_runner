@@ -4,7 +4,7 @@
       "type": "sse",
       "url": "https://mcptask.online/mcp/sse",
       "headers": {
-        "Authorization": "Bearer ${MCPTASK_TOKEN}"
+        "Authorization": "Bearer ${WORKVECTOR_KAMR_TOKEN}"
       }
     },
     "llmmn-production": {
