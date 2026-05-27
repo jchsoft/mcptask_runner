@@ -108,6 +108,13 @@ module McptaskRunner
       end
     end
 
+    def clear_active_actions
+      @mutex.synchronize do
+        @active_actions.clear
+        touch_activity
+      end
+    end
+
     def mark_activity
       @mutex.synchronize { touch_activity }
     end
@@ -118,6 +125,7 @@ module McptaskRunner
         @closed_at = Time.now.utc.iso8601(3)
         @ttl_seconds = ttl_seconds
         @error_message = nil
+        @active_actions.clear
         touch_activity
       end
     end

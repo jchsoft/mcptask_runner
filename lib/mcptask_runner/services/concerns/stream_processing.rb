@@ -9,7 +9,7 @@ module McptaskRunner
       def stream_lines(io)
         io.each_line do |line|
           yield line
-          break if @state.result_received
+          break if @state.result_received || @state.stopping
         end
       end
 
@@ -151,6 +151,11 @@ module McptaskRunner
                                       line.include?('Repeated 529 Overloaded')
       end
 
+      # Context overflow = session dead, --continue cannot recover. Kill the subprocess
+      # immediately to force stdout/stderr pipe closure: without the kill, orphan child
+      # processes (MCP servers, hooks) inherited from Claude can keep the pipe open
+      # indefinitely after Claude itself dies, blocking stdout_thread.join forever.
+      # Heartbeat also exits on @state.stopping, so the subprocess has no other watchdog.
       def check_for_context_overflow(line)
         return if @state.context_overflow
         return unless line.include?('Prompt is too long') ||
@@ -160,6 +165,7 @@ module McptaskRunner
         @state.context_overflow = true
         @state.stopping = true
         Logger.error "[#{@log_tag}] Context overflow detected ('Prompt is too long') — session is dead, marking terminal"
+        kill_process(@state.child_pid)
       end
 
       def check_for_result_message(line)

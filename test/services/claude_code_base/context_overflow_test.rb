@@ -11,6 +11,47 @@ class ClaudeCodeBaseContextOverflowTest < Minitest::Test
     assert base.instance_variable_get(:@state).stopping, 'Should mark stopping to treat stream closure as expected'
   end
 
+  # Regression: context overflow used to set stopping=true but leave subprocess alive.
+  # Heartbeat exits on stopping=true → no watchdog. Orphan child processes (MCP servers,
+  # hooks) inherited from Claude kept the stdout pipe open after Claude died, so
+  # stdout_thread.join blocked forever. Process hung indefinitely with no heartbeats.
+  def test_check_for_context_overflow_kills_subprocess_to_unblock_stdout_thread
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.instance_variable_get(:@state).child_pid = 12_345
+
+    killed_pid = nil
+    base.stub(:kill_process, ->(pid) { killed_pid = pid }) do
+      base.send(:check_for_context_overflow, '[Claude] Prompt is too long')
+    end
+
+    assert_equal 12_345, killed_pid, 'must SIGTERM subprocess so stdout pipe closes'
+  end
+
+  def test_check_for_context_overflow_no_kill_when_pattern_absent
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.instance_variable_get(:@state).child_pid = 12_345
+
+    killed = false
+    base.stub(:kill_process, ->(_pid) { killed = true }) do
+      base.send(:check_for_context_overflow, '{"type":"assistant"}')
+    end
+
+    refute killed, 'must not kill on unrelated lines'
+  end
+
+  def test_check_for_context_overflow_kills_only_once_even_with_repeated_lines
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.instance_variable_get(:@state).child_pid = 12_345
+
+    kill_count = 0
+    base.stub(:kill_process, ->(_pid) { kill_count += 1 }) do
+      base.send(:check_for_context_overflow, 'Prompt is too long')
+      base.send(:check_for_context_overflow, 'Prompt is too long again')
+    end
+
+    assert_equal 1, kill_count, 'second invocation must short-circuit on context_overflow flag'
+  end
+
   def test_check_for_context_overflow_matches_context_length_exceeded
     base = McptaskRunner::ClaudeCodeBase.new
     base.send(:check_for_context_overflow, '{"error":{"type":"context_length_exceeded"}}')

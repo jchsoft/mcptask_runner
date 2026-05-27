@@ -328,8 +328,10 @@ module McptaskRunner
     def finalize_streaming(execution_start)
       elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - execution_start).round(1)
       Logger.info_stdout "[#{@log_tag}] Execution finished in #{elapsed}s (#{@state.stream_line_count} stream events)"
-      return unless @snapshot_builder.status == "processing"
+      @snapshot_builder.clear_active_actions
+      return unless %w[processing pending].include?(@snapshot_builder.status)
 
+      @snapshot_builder.set_status(:processing) if @snapshot_builder.status == "pending"
       @snapshot_builder.set_status(:finished)
       EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)
     end

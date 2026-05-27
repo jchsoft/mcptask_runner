@@ -274,6 +274,16 @@ class SnapshotBuilderTest < Minitest::Test
     assert_nil @builder.to_h[:error_message]
   end
 
+  def test_close_clears_active_actions
+    @builder.set_status("triage")
+    @builder.set_status("processing")
+    @builder.tool_started(tool_id: 'toolu_skill', name: 'Skill', summary: 'test-start')
+    assert_equal 1, @builder.active_tool_count, 'tool registered before close'
+
+    @builder.close
+    assert_empty @builder.to_h[:active_actions], 'close must clear orphan Skill entries'
+  end
+
   # ---- mark_activity ----
 
   def test_mark_activity_updates_last_activity_at
