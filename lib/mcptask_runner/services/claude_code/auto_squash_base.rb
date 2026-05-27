@@ -48,6 +48,33 @@ module McptaskRunner
         nil
       end
 
+      # Override RetryHandling default: when context overflows on auto-squash, the merge
+      # may already have happened (gh pr merge → main update → final LogWorkProgressTool)
+      # before some post-merge skill bloated the session. Treat that as success instead of
+      # error; the work is irreversibly merged and the effort is logged.
+      def handle_context_overflow(start_time)
+        if @task_id && (merged = post_merge_state_for_task)
+          elapsed_hours = ((Time.now - start_time) / 3600.0).round(2)
+          Logger.warn "[#{@log_tag}] Context overflow but PR ##{merged[:pr_number]} for task " \
+                      "##{@task_id} is MERGED — inferring success (#{elapsed_hours}h)"
+          return {
+            'status' => 'success',
+            'task_id' => @task_id,
+            'pr_number' => merged[:pr_number],
+            'merge_commit' => merged[:merge_commit],
+            'inferred_from_merge' => true,
+            'message' => "Context overflow after merge — recovered success from PR ##{merged[:pr_number]}",
+            'hours' => { 'task_worked' => elapsed_hours }
+          }
+        end
+
+        super
+      end
+
+      def post_merge_state_for_task
+        preflight_merged_pr_match&.then { |m| { pr_number: m[:pr_number], merge_commit: m[:merge_commit] } }
+      end
+
       # Match a PR to a task_id via: title word-match, body containing the
       # mcptask URI, or branch name with the id as a path/segment.
       def pr_matches_task?(pr, task_id)
@@ -261,16 +288,12 @@ module McptaskRunner
               - CI PASSES:
                 → gh pr merge --squash --delete-branch
                 → git checkout main && git pull
-                → **COMPACT CONTEXT (MANDATORY)** — invoke `/compact` slash command NOW,
-                  BEFORE final progress logging. CI logs + tool churn bloat the session;
-                  past runs hit "Prompt is too long" while emitting the final TASKRUNNER_RESULT.
-                  If `/compact` is unavailable in this mode, proceed (no-op).
                 → status "success"
               - CI FAILS:
                 → Analyze, fix, commit, push
                 → Retry bin/ci
-                → Retry passes → merge (above; including /compact)
-                → Retry fails → invoke `/compact` then status "ci_failed" (PR stays open)
+                → Retry passes → merge (above)
+                → Retry fails → status "ci_failed" (PR stays open)
         STEP
       end
     end
