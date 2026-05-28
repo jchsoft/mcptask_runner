@@ -82,12 +82,28 @@ module McptaskRunner
           @accumulated_output.include?('context_length_exceeded')
       end
 
+      def tool_not_enabled_detected?
+        @state.tool_not_enabled ||
+          @accumulated_output.include?('exists but is not enabled in this context')
+      end
+
       def handle_context_overflow(start_time)
         elapsed_hours = ((Time.now - start_time) / 3600.0).round(2)
         Logger.error "[#{@log_tag}] Context overflow — session unrecoverable after #{elapsed_hours}h, " \
                      'emitting terminal error (no --continue retry — it would hit the same limit)'
         error_result("Context overflow after #{elapsed_hours}h — session exceeded token limit, cannot resume with --continue")
           .merge('reason' => 'context_overflow')
+      end
+
+      # MCP server disconnected. Snapshot already emitted as :error by
+      # check_for_tool_not_enabled in stream_processing.rb (mirrors check_stall). Here we just
+      # log the terminal message and return the error result for the caller.
+      def handle_tool_not_enabled(start_time)
+        elapsed_hours = ((Time.now - start_time) / 3600.0).round(2)
+        message = "MCP tool not enabled after #{elapsed_hours}h — MCP server disconnected " \
+                  '(check .mcp.json + env tokens), session cannot recover'
+        Logger.error "[#{@log_tag}] #{message}"
+        error_result(message).merge('reason' => 'tool_not_enabled')
       end
 
       # Stall is terminal for this run but the mcptask piece stays in_progress.

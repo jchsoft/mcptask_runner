@@ -3,6 +3,23 @@
 require 'test_helper'
 
 class DeciderTest < Minitest::Test
+  # Force TimeStatusClient.fetch to raise so the fallback (local estimates) path runs by default.
+  # Without this, when `.mcp.json` and WORKVECTOR_KAMR_TOKEN are present in the dev env, fetch
+  # reaches the live server and tests get real `worked_today` data instead of fixture values.
+  # REST-truth tests (e.g. test_remaining_hours_uses_server_truth_when_available) wrap their
+  # bodies in `TimeStatusClient.stub :fetch, ...` which layers on top of this override.
+  def setup
+    @original_fetch = McptaskRunner::TimeStatusClient.method(:fetch)
+    McptaskRunner::TimeStatusClient.define_singleton_method(:fetch) do
+      raise McptaskRunner::TimeStatusClient::Error, 'TimeStatusClient stubbed off in DeciderTest setup'
+    end
+  end
+
+  def teardown
+    fetch = @original_fetch
+    McptaskRunner::TimeStatusClient.define_singleton_method(:fetch) { fetch.call }
+  end
+
   def test_decider_responds_to_should_continue
     decider = McptaskRunner::Decider.new
     assert_respond_to decider, :should_continue?

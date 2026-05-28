@@ -168,6 +168,25 @@ module McptaskRunner
         kill_process(@state.child_pid)
       end
 
+      # MCP server disconnected at Claude startup → tool reports "exists but is not enabled
+      # in this context". Marker retries would just re-emit the same failure and balloon
+      # context past the 200K pin (see config/models.yml). Treat as terminal.
+      # Sets snapshot status to :error inside the detector (mirrors check_stall) so
+      # finalize_streaming skips re-setting :finished, and the failure shows up in the
+      # mcptask.online web UI — not only in ~/logs/mcptask_runner/mcptask_runner.log.
+      def check_for_tool_not_enabled(line)
+        return if @state.tool_not_enabled
+        return unless line.include?('exists but is not enabled in this context')
+
+        @state.tool_not_enabled = true
+        @state.stopping = true
+        error_msg = 'MCP tool not enabled — MCP server disconnected (check .mcp.json + env tokens)'
+        Logger.error "[#{@log_tag}] Tool not enabled detected — #{error_msg}, session is dead, marking terminal"
+        @snapshot_builder.set_status(:error, error_message: error_msg)
+        EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)
+        kill_process(@state.child_pid)
+      end
+
       def check_for_result_message(line)
         return if @state.result_received
 

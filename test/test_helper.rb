@@ -12,9 +12,11 @@ $LOAD_PATH.unshift File.expand_path("../lib", __dir__)
 require "mcptask_runner"
 
 # Prevent tests from accidentally opening a real WebSocket to mcptask.online when the
-# developer shell has MCPTASK_TOKEN exported. Real emits require an explicit start_session.
+# developer shell has any of these tokens exported. Real emits require an explicit
+# start_session. Scrub every env var referenced from `.mcp.json` Authorization headers
+# so EventStream / TimeStatusClient resolve to empty token and skip network I/O.
 ENV.delete("MCPT_RUNNER_CABLE_URL")
-ENV.delete("MCPTASK_TOKEN")
+%w[MCPTASK_TOKEN WORKVECTOR_KAMR_TOKEN LLMMN_TOKEN].each { |k| ENV.delete(k) }
 
 # Wipe any stale urgent-bug pin file from previous test runs (pin lives in cwd-relative tmp dir;
 # tests sharing the project root would otherwise leak pin state between cases).

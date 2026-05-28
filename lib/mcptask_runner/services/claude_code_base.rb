@@ -30,6 +30,11 @@ module McptaskRunner
   # Terminal: session is unrecoverable, --continue on same session would re-trigger the error.
   class ContextOverflowError < StandardError; end
 
+  # Raised when an MCP tool returns "exists but is not enabled in this context",
+  # i.e. the MCP server connection is missing at Claude startup (config gone / token bad).
+  # Terminal: server can't be reattached mid-session, marker retries would just balloon context.
+  class ToolNotEnabledError < StandardError; end
+
   # Raised when daily quota crosses per_day while a Claude run is in progress.
   # Terminal: heartbeat already SIGTERMed the subprocess; caller must NOT retry.
   class QuotaExceededMidTaskError < StandardError; end
@@ -78,13 +83,13 @@ module McptaskRunner
     # class stays under Reek's TooManyInstanceVariables threshold.
     ExecutionState = Struct.new(
       :stopping, :result_received, :inactivity_timeout, :quota_exceeded,
-      :api_overload, :context_overflow, :stalled, :child_pid, :stream_line_count,
+      :api_overload, :context_overflow, :tool_not_enabled, :stalled, :child_pid, :stream_line_count,
       keyword_init: true
     ) do
       def self.fresh
         new(stopping: false, result_received: false, inactivity_timeout: false,
             quota_exceeded: false, api_overload: false, context_overflow: false,
-            stalled: nil, child_pid: nil, stream_line_count: 0)
+            tool_not_enabled: false, stalled: nil, child_pid: nil, stream_line_count: 0)
       end
     end
 
@@ -154,6 +159,10 @@ module McptaskRunner
       # Detect context overflow BEFORE other errors - session is dead, --continue cannot recover
       raise ContextOverflowError if context_overflow_detected?
 
+      # Detect MCP "tool not enabled" — server missing at startup, marker retry would just
+      # balloon context with the same failure.
+      raise ToolNotEnabledError if tool_not_enabled_detected?
+
       # Detect API overload - Claude crashed due to 529 errors, not a real failure
       raise ApiOverloadError if api_overload_detected?
 
@@ -163,10 +172,12 @@ module McptaskRunner
       result
     rescue Timeout::Error
       raise ContextOverflowError if @state.context_overflow
+      raise ToolNotEnabledError if @state.tool_not_enabled
 
       handle_recoverable_error('Timeout', start_time)
     rescue StreamClosedError => e
       raise ContextOverflowError if @state.context_overflow
+      raise ToolNotEnabledError if @state.tool_not_enabled
       raise ApiOverloadError if @state.api_overload
 
       handle_recoverable_error("Stream closed: #{e.message}", start_time)
@@ -176,6 +187,8 @@ module McptaskRunner
       handle_api_overload(start_time)
     rescue ContextOverflowError
       handle_context_overflow(start_time)
+    rescue ToolNotEnabledError
+      handle_tool_not_enabled(start_time)
     rescue StalledError => e
       handle_stalled(e.stall, start_time)
     end
@@ -300,6 +313,7 @@ module McptaskRunner
       track_system_task_event(line)
       check_for_mcp_server_status(line)
       check_for_context_overflow(line)
+      check_for_tool_not_enabled(line)
       check_for_api_overload(line)
       check_for_result_message(line)
       if OutputFormatter.should_log_to_stdout?(line)
