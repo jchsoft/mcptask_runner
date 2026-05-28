@@ -18,7 +18,7 @@ module McptaskRunner
 
               #{branch_detection_step}
 
-              STEP 2 - FETCH: #{task_fetch_url}#{fetch_step_suffix}
+              STEP 2 - FETCH: INVOKE ReadMcpResourceTool with server="mcptask-online", uri="#{task_fetch_url}" — DIRECT MCP. Do NOT use /mcptask-read skill.#{fetch_step_suffix}
               - No tasks → status "no_more_tasks", recommended_model="genius"
               - type="Story" → STEP 2b
               - type="Task" → STEP 3
@@ -28,7 +28,7 @@ module McptaskRunner
               1. story_id = Story's relative_id
               2. First subtask: NOT "Schváleno"/"Hotovo?", progress<100
               3. None → status "no_more_tasks", recommended_model="genius", piece_type="Story"
-              4. Fetch mcptask://pieces/jchsoft/<subtask_id>
+              4. INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/<subtask_id>" — DIRECT MCP, NOT skill.
               5. STEP 3 with SUBTASK data
               6. Result: piece_type="Story", story_id=Story's relative_id, task_id=subtask's relative_id
 

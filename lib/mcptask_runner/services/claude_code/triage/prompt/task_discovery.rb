@@ -34,7 +34,7 @@ module McptaskRunner
                  a. Extract 4+ digit task ID from branch (e.g. "feature/9508-..." → 9508)
                  b. No ID → check PR: gh pr list --head $(git branch --show-current) --json body --jq '.[0].body'
                     Look for mcptask.online link → extract task ID
-                 c. Found → mcptask://pieces/jchsoft/{task_id}, resuming=true
+                 c. Found → use this {task_id} in STEP 2 (mcptask://pieces/#{account_code}/{task_id}), resuming=true
                  d. Not found → STEP 2, resuming=false
             STEP
           end

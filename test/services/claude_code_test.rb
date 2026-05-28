@@ -24,7 +24,7 @@ class ClaudeCodeHonestTest < Minitest::Test
 
   def test_instructions_includes_project_id
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         honest = McptaskRunner::ClaudeCode::Honest.new
         instructions = honest.send(:build_instructions)
         assert_includes instructions, 'project_relative_id=99'
@@ -36,7 +36,7 @@ class ClaudeCodeHonestTest < Minitest::Test
 
   def test_instructions_includes_git_checkout_main
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         honest = McptaskRunner::ClaudeCode::Honest.new
         instructions = honest.send(:build_instructions)
         assert_includes instructions, 'git checkout main'
@@ -56,7 +56,7 @@ class ClaudeCodeHonestTest < Minitest::Test
 
   def test_instructions_includes_task_status_check
     File.stub :exist?, true do
-      File.stub :read, "project_relative_id=7\n" do
+      File.stub :read, "project_relative_id=7\naccount_code: `jchsoft`" do
         honest = McptaskRunner::ClaudeCode::Honest.new
         instructions = honest.send(:build_instructions)
         assert_includes instructions, 'not started/completed'
@@ -66,7 +66,7 @@ class ClaudeCodeHonestTest < Minitest::Test
 
   def test_instructions_includes_workflow_steps
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         honest = McptaskRunner::ClaudeCode::Honest.new
         instructions = honest.send(:build_instructions)
         assert_includes instructions, 'CREATE BRANCH'
@@ -82,7 +82,7 @@ class ClaudeCodeHonestTest < Minitest::Test
 
   def test_instructions_uses_test_runner_skill
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         honest = McptaskRunner::ClaudeCode::Honest.new
         instructions = honest.send(:build_instructions)
         assert_includes instructions, 'test-runner'
@@ -93,7 +93,7 @@ class ClaudeCodeHonestTest < Minitest::Test
 
   def test_instructions_ci_step_uses_ci_runner_skill
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         honest = McptaskRunner::ClaudeCode::Honest.new
         instructions = honest.send(:build_instructions)
         assert_includes instructions, 'ci-runner'
@@ -106,7 +106,7 @@ class ClaudeCodeHonestTest < Minitest::Test
 
   def test_instructions_includes_branch_resume_check
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         honest = McptaskRunner::ClaudeCode::Honest.new
         instructions = honest.send(:build_instructions)
         assert_includes instructions, 'GIT STATE + RESUME CHECK'
@@ -137,7 +137,7 @@ class ClaudeCodeDryTest < Minitest::Test
 
   def test_instructions_dry_includes_project_id
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=77' do
+      File.stub :read, "project_relative_id=77\naccount_code: `jchsoft`" do
         dry = McptaskRunner::ClaudeCode::Dry.new
         instructions = dry.send(:build_instructions)
         assert_includes instructions, 'project_relative_id=77'
@@ -151,7 +151,7 @@ class ClaudeCodeDryTest < Minitest::Test
 
   def test_instructions_dry_includes_task_info_fields
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=77' do
+      File.stub :read, "project_relative_id=77\naccount_code: `jchsoft`" do
         dry = McptaskRunner::ClaudeCode::Dry.new
         instructions = dry.send(:build_instructions)
         assert_includes instructions, 'task_info'
@@ -174,7 +174,7 @@ class ClaudeCodeDryTest < Minitest::Test
 
   def test_instructions_dry_includes_duration_best_extraction
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=77' do
+      File.stub :read, "project_relative_id=77\naccount_code: `jchsoft`" do
         dry = McptaskRunner::ClaudeCode::Dry.new
         instructions = dry.send(:build_instructions)
         assert_includes instructions, 'duration_best'
@@ -188,7 +188,7 @@ class ClaudeCodeDryTest < Minitest::Test
 
   def test_instructions_dry_prevents_modifications
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=77' do
+      File.stub :read, "project_relative_id=77\naccount_code: `jchsoft`" do
         dry = McptaskRunner::ClaudeCode::Dry.new
         instructions = dry.send(:build_instructions)
         assert_includes instructions, 'NO branch'
@@ -200,7 +200,7 @@ class ClaudeCodeDryTest < Minitest::Test
 
   def test_instructions_dry_includes_story_detection
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=77' do
+      File.stub :read, "project_relative_id=77\naccount_code: `jchsoft`" do
         dry = McptaskRunner::ClaudeCode::Dry.new
         instructions = dry.send(:build_instructions)
         assert_includes instructions, 'STORY'
@@ -532,7 +532,7 @@ end
 class ClaudeCodeTodayAutoSquashTest < Minitest::Test
   def test_today_auto_squash_responds_to_run
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         assert_respond_to today_auto_squash, :run
       end
@@ -555,7 +555,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
 
   def test_today_auto_squash_instructions_includes_project_id
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'project_relative_id=99'
@@ -566,7 +566,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
 
   def test_today_auto_squash_instructions_includes_git_checkout_main
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'git checkout main'
@@ -577,7 +577,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
 
   def test_today_auto_squash_instructions_includes_workflow_steps
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'CREATE BRANCH'
@@ -593,7 +593,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
 
   def test_today_auto_squash_instructions_includes_auto_merge
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'AUTO-SQUASH'
@@ -605,7 +605,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
 
   def test_today_auto_squash_instructions_includes_ci_retry_logic
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'bin/ci'
@@ -619,7 +619,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
 
   def test_today_auto_squash_instructions_includes_wvrunner_result
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'TASKRUNNER_RESULT'
@@ -631,7 +631,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
 
   def test_today_auto_squash_instructions_includes_status_values
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'success'
@@ -644,7 +644,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
 
   def test_today_auto_squash_instructions_includes_compile_assets_step
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'COMPILE TEST ASSETS'
@@ -655,7 +655,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
 
   def test_today_auto_squash_instructions_omits_code_review
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
         refute_includes instructions, 'CODE REVIEW'
@@ -675,7 +675,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
 
   def test_instructions_includes_branch_resume_check
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'GIT STATE + RESUME CHECK'
@@ -803,7 +803,7 @@ end
 class ClaudeCodeQueueAutoSquashTest < Minitest::Test
   def test_queue_auto_squash_responds_to_run
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         assert_respond_to queue_auto_squash, :run
       end
@@ -826,7 +826,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_includes_project_id
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'project_relative_id=99'
@@ -837,7 +837,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_includes_git_checkout_main
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'git checkout main'
@@ -848,7 +848,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_includes_workflow_steps
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'CREATE BRANCH'
@@ -864,7 +864,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_includes_auto_merge
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'AUTO-SQUASH'
@@ -876,7 +876,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_mentions_queue_mode
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'QUEUE mode'
@@ -888,7 +888,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_includes_ci_retry_logic
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'bin/ci'
@@ -902,7 +902,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_includes_wvrunner_result
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'TASKRUNNER_RESULT'
@@ -914,7 +914,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_includes_status_values
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'success'
@@ -927,7 +927,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_includes_compile_assets_step
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'COMPILE TEST ASSETS'
@@ -938,7 +938,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_omits_code_review
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         refute_includes instructions, 'CODE REVIEW'
@@ -958,7 +958,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
 
   def test_instructions_includes_branch_resume_check
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'GIT STATE + RESUME CHECK'
@@ -970,7 +970,7 @@ end
 class ClaudeCodeOnceAutoSquashTest < Minitest::Test
   def test_once_auto_squash_responds_to_run
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         assert_respond_to once_auto_squash, :run
       end
@@ -993,7 +993,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_includes_project_id
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'project_relative_id=99'
@@ -1004,7 +1004,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_includes_git_checkout_main
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'git checkout main'
@@ -1015,7 +1015,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_includes_workflow_steps
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'CREATE BRANCH'
@@ -1031,7 +1031,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_includes_auto_merge
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'AUTO-SQUASH'
@@ -1043,7 +1043,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_mentions_once_mode
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'ONCE mode'
@@ -1054,7 +1054,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_includes_ci_retry_logic
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'bin/ci'
@@ -1068,7 +1068,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_includes_wvrunner_result
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'TASKRUNNER_RESULT'
@@ -1080,7 +1080,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_includes_status_values
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'success'
@@ -1093,7 +1093,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_includes_compile_assets_step
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'COMPILE TEST ASSETS'
@@ -1104,7 +1104,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_omits_code_review
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         refute_includes instructions, 'CODE REVIEW'
@@ -1124,7 +1124,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_once_auto_squash_instructions_includes_time_management
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'TIME MANAGEMENT'
@@ -1135,7 +1135,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
 
   def test_instructions_includes_branch_resume_check
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'GIT STATE + RESUME CHECK'
@@ -1147,7 +1147,7 @@ end
 class TimeAwarenessInstructionsTest < Minitest::Test
   def test_today_auto_squash_instructions_includes_time_management
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = obj.send(:build_instructions)
         assert_includes instructions, 'TIME MANAGEMENT'
@@ -1158,7 +1158,7 @@ class TimeAwarenessInstructionsTest < Minitest::Test
 
   def test_queue_auto_squash_instructions_includes_time_management
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = obj.send(:build_instructions)
         assert_includes instructions, 'TIME MANAGEMENT'
@@ -1176,7 +1176,7 @@ class TimeAwarenessInstructionsTest < Minitest::Test
 
   def test_honest_instructions_includes_time_management
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::Honest.new
         instructions = obj.send(:build_instructions)
         assert_includes instructions, 'TIME MANAGEMENT'
@@ -1201,7 +1201,7 @@ class TimeAwarenessInstructionsTest < Minitest::Test
 
   def test_dry_instructions_does_not_include_time_management
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::Dry.new
         instructions = obj.send(:build_instructions)
         refute_includes instructions, 'TIME MANAGEMENT'
@@ -1441,7 +1441,7 @@ end
 class PreexistingTestErrorsInstructionsTest < Minitest::Test
   def test_once_auto_squash_includes_preexisting_test_errors_instruction
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = obj.send(:build_instructions)
         assert_includes instructions, 'PREEXISTING TEST ERRORS'
@@ -1453,7 +1453,7 @@ class PreexistingTestErrorsInstructionsTest < Minitest::Test
 
   def test_today_auto_squash_includes_preexisting_test_errors_instruction
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = obj.send(:build_instructions)
         assert_includes instructions, 'PREEXISTING TEST ERRORS'
@@ -1465,7 +1465,7 @@ class PreexistingTestErrorsInstructionsTest < Minitest::Test
 
   def test_queue_auto_squash_includes_preexisting_test_errors_instruction
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = obj.send(:build_instructions)
         assert_includes instructions, 'PREEXISTING TEST ERRORS'
@@ -1503,7 +1503,7 @@ class PreexistingTestErrorsInstructionsTest < Minitest::Test
 
   def test_dry_does_not_include_preexisting_test_errors_instruction
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=99' do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::Dry.new
         instructions = obj.send(:build_instructions)
         refute_includes instructions, 'PREEXISTING TEST ERRORS'

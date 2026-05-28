@@ -24,7 +24,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_instructions_include_model_selection_rules
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -38,7 +39,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_instructions_use_next_url_without_task_id
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -49,7 +51,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_instructions_use_direct_url_with_task_id
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new(task_id: 456)
         instructions = triage.send(:build_instructions)
 
@@ -61,7 +64,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_instructions_include_resuming_field
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -73,7 +77,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_branch_check_comes_before_task_fetch_in_instructions
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -92,7 +97,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_instructions_include_pr_fallback_for_branches_without_task_id
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -104,7 +110,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_instructions_allow_genius_smart_or_primitive
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -116,7 +123,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_instructions_include_classification_criteria
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -131,7 +139,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_instructions_force_genius_on_resume
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         instructions = McptaskRunner::ClaudeCode::Triage.new.send(:build_instructions)
 
         assert_includes instructions, 'RESUMING OVERRIDE'
@@ -148,7 +157,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_instructions_default_to_smart
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -207,7 +217,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_standard_triage_without_story_id
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -221,7 +232,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_standard_triage_includes_story_handling_step
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -234,7 +246,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_standard_triage_result_format_includes_piece_type_and_story_id
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -247,7 +260,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_standard_triage_story_step_finds_incomplete_subtasks
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
@@ -262,7 +276,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_quota_check_step_is_active_by_default
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         instructions = McptaskRunner::ClaudeCode::Triage.new.send(:build_instructions)
 
         assert_includes instructions, 'STEP 0 - DAILY QUOTA (FIRST'
@@ -273,7 +288,8 @@ class ClaudeCodeTriageTest < Minitest::Test
 
   def test_quota_check_step_skipped_when_ignore_quota_true
     File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7' do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
         instructions = McptaskRunner::ClaudeCode::Triage.new(ignore_quota: true).send(:build_instructions)
 
         assert_includes instructions, 'STEP 0 - DAILY QUOTA (SKIPPED — ignore_quota=true)'

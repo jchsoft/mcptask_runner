@@ -21,14 +21,14 @@ module McptaskRunner
               #{daily_quota_check_step}
 
               STEP 1 - LOAD STORY:
-              1. Read mcptask://pieces/jchsoft/#{@story_id}
+              1. INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{@story_id}" — DIRECT MCP. Do NOT use /mcptask-read skill.
               2. Find subtasks
               3. First task: NOT "Schváleno"/"Hotovo?", progress<100
               4. None found → status "no_more_tasks", recommended_model="genius"
               5. Remember task relative_id
               NEVER use Bash/curl/Net::HTTP — API uses internal id (not relative_id), returns WRONG piece. On MCP failure: STOP, emit error status.
 
-              STEP 2 - FETCH TASK: Read mcptask://pieces/jchsoft/<task_relative_id>
+              STEP 2 - FETCH TASK: INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/<task_relative_id>" — DIRECT MCP, NOT /mcptask-read skill.
 
               STEP 3 - ANALYZE: Read title, description, piece_type, attachment filenames (no downloads). Apply model rules below.
 

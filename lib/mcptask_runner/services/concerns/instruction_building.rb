@@ -36,7 +36,7 @@ module McptaskRunner
              - IF main/master: #{pull_cmd} → step 2
              - IF feature branch:
                a) Extract task ID from branch name (e.g. "feature/9508-contact-page" → 9508)
-                  Found → read mcptask://pieces/jchsoft/{task_id}
+                  Found → INVOKE ReadMcpResourceTool server="mcptask-online" uri="mcptask://pieces/#{account_code}/{task_id}" — DIRECT MCP
                b) No ID → check PR: gh pr list --head $(git branch --show-current) --json body --jq '.[0].body'
                   Look for mcptask.online link → extract task ID → load task
                c) Still nothing → #{pull_cmd} → step 2
@@ -90,11 +90,18 @@ module McptaskRunner
 
       def task_fetch_url
         if @task_id
-          "mcptask://pieces/jchsoft/#{@task_id}"
+          "mcptask://pieces/#{account_code}/#{@task_id}"
         else
           project_id = project_relative_id or raise 'project_relative_id not found in CLAUDE.md'
-          "mcptask://pieces/jchsoft/@next?project_relative_id=#{project_id}"
+          "mcptask://pieces/#{account_code}/@next?project_relative_id=#{project_id}"
         end
+      end
+
+      def account_code
+        raise 'CLAUDE.md not found — cannot resolve account_code' unless File.exist?('CLAUDE.md')
+
+        File.read('CLAUDE.md').match(/account_code:\s*`?([\w-]+)`?/)&.then { |m| m[1] } \
+          or raise 'account_code not found in CLAUDE.md (expected a line like: "- account_code: `myaccount`")'
       end
 
       def hours_data_instruction(include_warning: false)

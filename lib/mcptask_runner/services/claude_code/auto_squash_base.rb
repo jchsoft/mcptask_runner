@@ -81,7 +81,7 @@ module McptaskRunner
         id = task_id.to_s
         pattern_word = /(?<!\d)#{id}(?!\d)/
         return true if pr['title'].to_s.match?(pattern_word)
-        return true if pr['body'].to_s.include?("pieces/jchsoft/#{id}")
+        return true if pr['body'].to_s.include?("pieces/#{account_code}/#{id}")
 
         pr['headRefName'].to_s.match?(%r{(?:^|[/-])#{id}(?:-|$)})
       end
@@ -126,7 +126,7 @@ module McptaskRunner
           1. Read mcptask://user (server="mcptask-online", LITERAL URI — no account suffix)
              → get current user relative_id
           2. LogWorkProgressTool:
-             account_code="jchsoft", piece_id=#{@task_id}, progress_percent=100,
+             account_code="#{account_code}", piece_id=#{@task_id}, progress_percent=100,
              duration_minutes=1,
              description="Preflight: merged PR ##{pr_number}#{commit_note} already resolves this task"
           3. Output the final result line and STOP:
