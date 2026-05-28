@@ -42,7 +42,7 @@ class ClaudeCodeTriageTest < Minitest::Test
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
-        assert_includes instructions, '@next?project_relative_id=7'
+        assert_includes instructions, 'next task project=7 with_attachments=false'
       end
     end
   end
@@ -53,8 +53,8 @@ class ClaudeCodeTriageTest < Minitest::Test
         triage = McptaskRunner::ClaudeCode::Triage.new(task_id: 456)
         instructions = triage.send(:build_instructions)
 
-        assert_includes instructions, 'mcptask://pieces/jchsoft/456'
-        refute_includes instructions, '@next'
+        assert_includes instructions, 'load piece 456 with_attachments=false'
+        refute_includes instructions, 'next task'
       end
     end
   end
@@ -173,7 +173,7 @@ class ClaudeCodeTriageTest < Minitest::Test
     instructions = triage.send(:build_instructions)
 
     assert_includes instructions, 'LOAD STORY'
-    assert_includes instructions, 'mcptask://pieces/jchsoft/8965'
+    assert_includes instructions, 'load piece 8965 with_attachments=false'
     assert_includes instructions, 'subtask'
     refute_includes instructions, 'RESUME DETECTION'
   end

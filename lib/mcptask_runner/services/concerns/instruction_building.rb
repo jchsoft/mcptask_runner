@@ -97,6 +97,15 @@ module McptaskRunner
         end
       end
 
+      def mcptask_read_args
+        if @task_id
+          "load piece #{@task_id}"
+        else
+          project_id = project_relative_id or raise 'project_relative_id not found in CLAUDE.md'
+          "next task project=#{project_id}"
+        end
+      end
+
       def hours_data_instruction(include_warning: false)
         warning = if include_warning
                     "\n   WARNING: already_worked = daily \"worked_out\" (e.g. 3.0). NOT from effort minutes/history!"

@@ -20,14 +20,14 @@ module McptaskRunner
 
               #{daily_quota_check_step}
 
-              STEP 1 - LOAD STORY:
-              1. Read mcptask://pieces/jchsoft/#{@story_id}
+              STEP 1 - LOAD STORY (MUST use /mcptask-read skill, NOT ReadMcpResourceTool):
+              1. Invoke /mcptask-read with args: "load piece #{@story_id} with_attachments=false"
               2. Find subtasks
               3. First task: NOT "Schváleno"/"Hotovo?", progress<100
               4. None found → status "no_more_tasks", recommended_model="genius"
               5. Remember task relative_id
 
-              STEP 2 - FETCH TASK: Read mcptask://pieces/jchsoft/<task_relative_id>
+              STEP 2 - FETCH TASK via /mcptask-read: "load piece <task_relative_id> with_attachments=false"
 
               STEP 3 - ANALYZE: Read title, description, piece_type, attachment filenames (no downloads). Apply model rules below.
 
