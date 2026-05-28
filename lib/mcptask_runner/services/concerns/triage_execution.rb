@@ -22,10 +22,22 @@ module McptaskRunner
         ClaudeCode::QueueAutoSquash => ClaudeCode::StoryAutoSquash
       }.freeze
 
+      # When an urgent pin fires inside a story-scoped loop, swap the story executor for the
+      # equivalent task executor — the pinned bug is a standalone Task, not a Story subtask,
+      # so loading Story context would mis-frame the work and Story triage would re-pick the
+      # interrupted subtask instead of the new bug.
+      URGENT_BUG_EXECUTOR_MAP = {
+        ClaudeCode::StoryManual => ClaudeCode::TaskManual,
+        ClaudeCode::StoryAutoSquash => ClaudeCode::TaskAutoSquash
+      }.freeze
+
       private
 
       def triage_and_execute(executor_class, **kwargs)
-        @task_id ||= read_urgent_pin
+        pinned_id = read_urgent_pin
+        return execute_pinned_urgent_bug(pinned_id, executor_class) if pinned_id && kwargs[:story_id] && !kwargs[:task_id]
+
+        @task_id ||= pinned_id
         task_id_for_triage = kwargs[:task_id] || @task_id || detect_task_id_from_branch
         story_id_for_triage = kwargs[:story_id]
 
@@ -69,6 +81,33 @@ module McptaskRunner
 
         execute_with_triage(executor_class, triaged_task_id, model_override, resuming,
                             triage_result: triage_result, **kwargs)
+      end
+
+      # Bypass triage when an urgent pin is active inside a story-scoped loop.
+      # Story triage prompt (`Triage::Prompt::Story`) picks the first incomplete subtask of
+      # the story and ignores `task_id`, so it would re-pick the interrupted subtask forever.
+      # Run the pinned Task directly with genius — matches the "skip triage, give it OPUS"
+      # path described by the original bug report.
+      def execute_pinned_urgent_bug(pinned_id, story_executor_class)
+        bug_executor_class = URGENT_BUG_EXECUTOR_MAP.fetch(story_executor_class) do
+          Logger.warn("[WorkLoop] No urgent-bug executor mapping for #{story_executor_class.name}, using TaskAutoSquash")
+          ClaudeCode::TaskAutoSquash
+        end
+
+        Logger.info_stdout("[WorkLoop] Urgent pin ##{pinned_id} detected in story scope — bypassing triage, running #{bug_executor_class.name} with genius")
+        @task_id = pinned_id
+        @builder&.set_model('genius')
+        @builder&.set_task(task_id: pinned_id)
+        @builder&.set_status(:processing)
+        EventStream.emit_snapshot(@builder.to_h, force: true) if @builder
+
+        executor = bug_executor_class.new(task_id: pinned_id, verbose: @verbose,
+                                          model_override: 'genius', resuming: false,
+                                          snapshot_builder: @builder)
+        result = run_with_quota_guard(executor, nil, pinned_id)
+        Logger.info_stdout("[WorkLoop] Pinned urgent bug ##{pinned_id} completed with status: #{result['status']}")
+        release_urgent_pin_if_done(pinned_id, result)
+        result
       end
 
       def execute_with_triage(executor_class, task_id, model_override, resuming, **kwargs)

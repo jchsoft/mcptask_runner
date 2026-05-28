@@ -229,4 +229,179 @@ class WorkLoopUrgentBugSwitchTest < Minitest::Test
 
     assert File.exist?(pin_path), 'cascading preexisting bug must leave pin in place (switch_to_main re-pins to new id)'
   end
+
+  # --- Pinned-bug bypass: when urgent pin is set inside a story-scoped loop, runner must
+  # skip story triage and run the bug as a standalone Task with genius. Without this, Story
+  # triage prompt re-picks the interrupted subtask and the runner loops on the same task.
+
+  def test_story_auto_squash_with_pin_bypasses_triage_and_runs_task_auto_squash
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, '9999')
+
+    received_kwargs = nil
+    task_executor_call_count = [0]
+    task_executor = Object.new
+    task_executor.define_singleton_method(:run) do
+      task_executor_call_count[0] += 1
+      { 'status' => 'success', 'task_id' => 9999, 'hours' => { 'per_day' => 8, 'task_estimated' => 1 } }
+    end
+
+    story_executor_called = [false]
+    story_executor = Object.new
+    story_executor.define_singleton_method(:run) do
+      story_executor_called[0] = true
+      { 'status' => 'success' }
+    end
+
+    triage_called = [false]
+    triage = Object.new
+    triage.define_singleton_method(:run) do
+      triage_called[0] = true
+      { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' }
+    end
+
+    McptaskRunner::ClaudeCode::Triage.stub(:new, triage) do
+      McptaskRunner::ClaudeCode::StoryAutoSquash.stub(:new, story_executor) do
+        McptaskRunner::ClaudeCode::TaskAutoSquash.stub(:new, ->(**kwargs) { received_kwargs = kwargs; task_executor }) do
+          McptaskRunner::Decider.stub(:new, Object.new.tap { |d| d.define_singleton_method(:should_stop?) { true } }) do
+            Kernel.stub(:sleep, nil) do
+              loop_instance = McptaskRunner::WorkLoop.new(story_id: 123)
+              results = loop_instance.execute(:story_auto_squash)
+
+              assert_equal 1, task_executor_call_count[0], 'TaskAutoSquash must run the pinned bug'
+              refute story_executor_called[0], 'StoryAutoSquash must not run while pin is active'
+              refute triage_called[0], 'triage must be bypassed when pin is set in story scope'
+              assert_equal 9999, received_kwargs[:task_id]
+              assert_equal 'genius', received_kwargs[:model_override]
+              assert_equal 'success', results.first['status']
+            end
+          end
+        end
+      end
+    end
+  end
+
+  def test_story_manual_with_pin_bypasses_triage_and_runs_task_manual
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, '8888')
+
+    received_kwargs = nil
+    task_executor = Object.new
+    task_executor.define_singleton_method(:run) do
+      { 'status' => 'success', 'task_id' => 8888, 'hours' => { 'per_day' => 8, 'task_estimated' => 1 } }
+    end
+
+    story_executor_called = [false]
+    story_executor = Object.new
+    story_executor.define_singleton_method(:run) do
+      story_executor_called[0] = true
+      { 'status' => 'success' }
+    end
+
+    triage_called = [false]
+    triage = Object.new
+    triage.define_singleton_method(:run) do
+      triage_called[0] = true
+      { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' }
+    end
+
+    McptaskRunner::ClaudeCode::Triage.stub(:new, triage) do
+      McptaskRunner::ClaudeCode::StoryManual.stub(:new, story_executor) do
+        McptaskRunner::ClaudeCode::TaskManual.stub(:new, ->(**kwargs) { received_kwargs = kwargs; task_executor }) do
+          McptaskRunner::Decider.stub(:new, Object.new.tap { |d| d.define_singleton_method(:should_stop?) { true } }) do
+            Kernel.stub(:sleep, nil) do
+              loop_instance = McptaskRunner::WorkLoop.new(story_id: 456)
+              loop_instance.execute(:story_manual)
+
+              refute story_executor_called[0], 'StoryManual must not run while pin is active'
+              refute triage_called[0], 'triage must be bypassed when pin is set in story scope'
+              assert_equal 8888, received_kwargs[:task_id]
+              assert_equal 'genius', received_kwargs[:model_override]
+            end
+          end
+        end
+      end
+    end
+  end
+
+  def test_pin_cleared_after_bug_finishes_in_story_scope
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, '7777')
+
+    task_executor = Object.new
+    task_executor.define_singleton_method(:run) do
+      { 'status' => 'success', 'task_id' => 7777, 'hours' => { 'per_day' => 8, 'task_estimated' => 1 } }
+    end
+
+    triage = Object.new
+    triage.define_singleton_method(:run) { { 'status' => 'no_more_tasks', 'recommended_model' => 'genius' } }
+
+    McptaskRunner::ClaudeCode::Triage.stub(:new, triage) do
+      McptaskRunner::ClaudeCode::TaskAutoSquash.stub(:new, task_executor) do
+        McptaskRunner::Decider.stub(:new, Object.new.tap { |d| d.define_singleton_method(:should_stop?) { true } }) do
+          Kernel.stub(:sleep, nil) do
+            loop_instance = McptaskRunner::WorkLoop.new(story_id: 123)
+            loop_instance.execute(:story_auto_squash)
+
+            refute File.exist?(pin_path), 'pin must be cleared after bug completes successfully'
+          end
+        end
+      end
+    end
+  end
+
+  def test_pin_kept_when_bug_cascades_into_another_urgent_bug
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, '7777')
+
+    task_executor = Object.new
+    task_executor.define_singleton_method(:run) do
+      { 'status' => 'urgent_bug_pending', 'bug_task_id' => 8888, 'task_id' => 7777 }
+    end
+
+    triage = Object.new
+    triage.define_singleton_method(:run) { { 'status' => 'no_more_tasks' } }
+
+    loop_instance = McptaskRunner::WorkLoop.new(story_id: 123)
+    loop_instance.define_singleton_method(:current_git_branch) { 'main' }
+
+    McptaskRunner::ClaudeCode::Triage.stub(:new, triage) do
+      McptaskRunner::ClaudeCode::TaskAutoSquash.stub(:new, task_executor) do
+        McptaskRunner::Decider.stub(:new, Object.new.tap { |d| d.define_singleton_method(:should_stop?) { true } }) do
+          Kernel.stub(:sleep, nil) do
+            loop_instance.send(:execute_pinned_urgent_bug, 7777, McptaskRunner::ClaudeCode::StoryAutoSquash)
+
+            assert File.exist?(pin_path), 'cascading bug must overwrite (not clear) pin'
+            assert_equal '8888', File.read(pin_path).strip
+          end
+        end
+      end
+    end
+  end
+
+  def test_pin_with_explicit_task_id_does_not_bypass
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, '9999')
+
+    received_task_id = nil
+    triage = Object.new
+    triage.define_singleton_method(:run) do
+      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 555,
+        'resuming' => false, 'hours' => { 'per_day' => 8, 'task_estimated' => 1, 'already_worked' => 0 } }
+    end
+
+    executor = Object.new
+    executor.define_singleton_method(:run) { { 'status' => 'no_more_tasks' } }
+
+    McptaskRunner::ClaudeCode::Triage.stub(:new, ->(**kwargs) { received_task_id = kwargs[:task_id]; triage }) do
+      McptaskRunner::ClaudeCode::TaskAutoSquash.stub(:new, executor) do
+        Kernel.stub(:sleep, nil) do
+          loop_instance = McptaskRunner::WorkLoop.new(task_id: 555)
+          loop_instance.execute(:task_auto_squash)
+
+          assert_equal 555, received_task_id, 'explicit task_id mode must not bypass to pin'
+        end
+      end
+    end
+  end
 end
