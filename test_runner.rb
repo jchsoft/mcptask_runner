@@ -40,6 +40,7 @@ test_files = [
   'test/services/work_loop/task_test.rb',
   'test/services/work_loop/workflow_test.rb',
   'test/services/work_loop/triage_test.rb',
+  'test/services/work_loop/urgent_bug_switch_test.rb',
   'test/tasks_test.rb',
   'test/test_helper_test.rb',
   'test/version_manager_test.rb',
@@ -56,7 +57,7 @@ test_files.each do |file|
   next unless File.exist?(file)
 
   puts "\n📝 #{file}"
-  output = `ruby -I lib -I test #{file} 2>&1`
+  output = `ruby -I lib -I test #{file} 2>&1`.force_encoding('UTF-8')
   puts output
 
   # Parse test results
