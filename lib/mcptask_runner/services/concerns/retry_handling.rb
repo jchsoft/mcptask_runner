@@ -82,9 +82,12 @@ module McptaskRunner
           @accumulated_output.include?('context_length_exceeded')
       end
 
+      # Flag only — set by check_for_tool_not_enabled (stream_processing.rb) which parses
+      # the stream and fires solely on a genuine is_error tool_result. A bare
+      # @accumulated_output substring scan is a false-positive vector: any Grep/Read whose
+      # content quotes the marker (e.g. tool_not_enabled_test.rb) would trip a healthy session.
       def tool_not_enabled_detected?
-        @state.tool_not_enabled ||
-          @accumulated_output.include?('exists but is not enabled in this context')
+        @state.tool_not_enabled
       end
 
       def handle_context_overflow(start_time)

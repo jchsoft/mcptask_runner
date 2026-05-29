@@ -176,7 +176,7 @@ module McptaskRunner
       # mcptask.online web UI — not only in ~/logs/mcptask_runner/mcptask_runner.log.
       def check_for_tool_not_enabled(line)
         return if @state.tool_not_enabled
-        return unless line.include?('exists but is not enabled in this context')
+        return unless tool_not_enabled_error?(line)
 
         @state.tool_not_enabled = true
         @state.stopping = true
@@ -185,6 +185,23 @@ module McptaskRunner
         @snapshot_builder.set_status(:error, error_message: error_msg)
         EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)
         kill_process(@state.child_pid)
+      end
+
+      # Fire ONLY on a genuine is_error tool_result. A *successful* tool_result whose
+      # content merely echoes the marker (Grep/Read/cat over a file or log quoting the
+      # phrase — e.g. tool_not_enabled_test.rb itself) must NOT trip the kill. That
+      # self-detection killed a healthy session: an audit grep matched the fixture
+      # string and the watchdog mistook it for a real disconnect.
+      def tool_not_enabled_error?(line)
+        return false unless line.include?('exists but is not enabled in this context')
+
+        blocks = JSON.parse(line).dig('message', 'content')
+        blocks.is_a?(Array) && blocks.any? do |block|
+          block['type'] == 'tool_result' && block['is_error'] &&
+            block['content'].to_s.include?('exists but is not enabled in this context')
+        end
+      rescue JSON::ParserError
+        false
       end
 
       def check_for_result_message(line)
