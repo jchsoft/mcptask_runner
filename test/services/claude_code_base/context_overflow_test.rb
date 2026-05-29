@@ -74,11 +74,58 @@ class ClaudeCodeBaseContextOverflowTest < Minitest::Test
     assert base.send(:context_overflow_detected?), 'Should detect via flag even with empty accumulated_output'
   end
 
-  def test_context_overflow_detected_via_accumulated_output
+  # Regression: a healthy 30K-token session was killed because the agent ran
+  # `Read claude_code_base.rb`, whose line-29 comment documents the phrase
+  # ("Prompt is too long"). The successful tool_result echoing that file content
+  # streamed back and the old naive `line.include?` / @accumulated_output substring
+  # scan mistook it for a real overflow. A successful tool_result must NOT trip it.
+  def test_check_for_context_overflow_ignores_successful_tool_result_echoing_phrase
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.instance_variable_get(:@state).child_pid = 12_345
+    echoed = JSON.generate(
+      'type' => 'user',
+      'message' => { 'content' => [
+        { 'type' => 'tool_result', 'tool_use_id' => 'x', 'is_error' => false,
+          'content' => '29: # Raised when context exceeds limit ("Prompt is too long").' }
+      ] }
+    )
+
+    killed = false
+    base.stub(:kill_process, ->(_pid) { killed = true }) do
+      base.send(:check_for_context_overflow, echoed)
+    end
+
+    refute base.instance_variable_get(:@state).context_overflow,
+           'echoed file content must not flag overflow'
+    refute killed, 'must not kill a healthy session over echoed file content'
+  end
+
+  # A genuine error-flagged tool_result carrying the phrase SHOULD still trip.
+  def test_check_for_context_overflow_fires_on_error_tool_result
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.instance_variable_get(:@state).child_pid = 12_345
+    err = JSON.generate(
+      'type' => 'user',
+      'message' => { 'content' => [
+        { 'type' => 'tool_result', 'is_error' => true, 'content' => 'API error: Prompt is too long' }
+      ] }
+    )
+
+    base.stub(:kill_process, ->(_pid) {}) do
+      base.send(:check_for_context_overflow, err)
+    end
+
+    assert base.instance_variable_get(:@state).context_overflow
+  end
+
+  # Detection is now flag-only (set by the JSON-aware streaming detector). The
+  # @accumulated_output substring scan was the false-positive vector and is gone.
+  def test_context_overflow_detected_is_flag_only_not_accumulated_substring
     base = McptaskRunner::ClaudeCodeBase.new
     base.instance_variable_set(:@accumulated_output, 'some output Prompt is too long some more')
 
-    assert base.send(:context_overflow_detected?)
+    refute base.send(:context_overflow_detected?),
+           'accumulated_output substring must NOT detect — only the @state flag may'
   end
 
   def test_handle_context_overflow_returns_terminal_error_no_retry
@@ -126,8 +173,9 @@ class ClaudeCodeBaseContextOverflowTest < Minitest::Test
     base.stub(:resolve_claude_path, '/fake/claude') do
       base.stub(:execute_with_streaming, '') do
         base.stub(:parse_result, error_result) do
-          base.instance_variable_set(:@accumulated_output, +'Prompt is too long here')
+          base.instance_variable_set(:@accumulated_output, +'')
           base.instance_variable_get(:@state).result_received = false
+          base.instance_variable_get(:@state).context_overflow = true # set by JSON-aware streaming detector
 
           result = base.send(:attempt_execution, Time.now)
           assert_equal 'error', result['status']

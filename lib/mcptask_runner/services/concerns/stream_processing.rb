@@ -158,14 +158,38 @@ module McptaskRunner
       # Heartbeat also exits on @state.stopping, so the subprocess has no other watchdog.
       def check_for_context_overflow(line)
         return if @state.context_overflow
-        return unless line.include?('Prompt is too long') ||
-                      line.include?('prompt is too long') ||
-                      line.include?('context_length_exceeded')
+        return unless context_overflow_error?(line)
 
         @state.context_overflow = true
         @state.stopping = true
         Logger.error "[#{@log_tag}] Context overflow detected ('Prompt is too long') — session is dead, marking terminal"
         kill_process(@state.child_pid)
+      end
+
+      # Fire ONLY on a genuine API error carrying the limit message. A *successful*
+      # tool_result whose content merely echoes the phrase (Grep/Read/cat over a file
+      # that documents it — e.g. claude_code_base.rb's ContextOverflowError comment, or
+      # this concern itself) must NOT trip the kill. That self-detection killed a healthy
+      # 30K-token session: a Read of the very file defining the error matched the phrase
+      # and the watchdog mistook it for a real overflow (mirrors tool_not_enabled_error?).
+      def context_overflow_error?(line)
+        return false unless line.include?('Prompt is too long') ||
+                            line.include?('prompt is too long') ||
+                            line.include?('context_length_exceeded')
+
+        parsed = JSON.parse(line)
+        return true if parsed['is_error'] == true || parsed['subtype'].to_s.start_with?('error')
+        return true if parsed.key?('error') # top-level API error envelope
+
+        blocks = parsed.dig('message', 'content')
+        blocks.is_a?(Array) && blocks.any? do |block|
+          block['type'] == 'tool_result' && block['is_error'] &&
+            block['content'].to_s.match?(/prompt is too long|context_length_exceeded/i)
+        end
+      rescue JSON::ParserError
+        # Non-JSON line = raw CLI/stderr text. Tool-result echoes always arrive as JSON
+        # stream events, so a bare line carrying the phrase is the CLI's own API error.
+        true
       end
 
       # MCP server disconnected at Claude startup → tool reports "exists but is not enabled

@@ -75,11 +75,13 @@ module McptaskRunner
           @accumulated_output.include?('"error_status":529')
       end
 
+      # Flag only — set by check_for_context_overflow (stream_processing.rb) which parses
+      # the stream and fires solely on a genuine API error. A bare @accumulated_output
+      # substring scan is a false-positive vector: any Grep/Read whose content quotes the
+      # phrase (e.g. claude_code_base.rb's ContextOverflowError comment) would trip a
+      # healthy session — exactly what killed a 30K-token run.
       def context_overflow_detected?
-        @state.context_overflow ||
-          @accumulated_output.include?('Prompt is too long') ||
-          @accumulated_output.include?('prompt is too long') ||
-          @accumulated_output.include?('context_length_exceeded')
+        @state.context_overflow
       end
 
       # Flag only — set by check_for_tool_not_enabled (stream_processing.rb) which parses
