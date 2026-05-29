@@ -29,32 +29,10 @@ class ClaudeCodeBaseInstructionsTest < Minitest::Test
     assert_includes instruction, 'task_id MUST be numeric'
   end
 
-  def test_branch_resume_check_step_contains_branch_detection
+  def test_branch_resume_check_step_no_longer_exists
     base = McptaskRunner::ClaudeCodeBase.new
-    step = base.send(:branch_resume_check_step, project_id: 7)
-    assert_includes step, 'git branch --show-current'
-    assert_includes step, 'GIT STATE + RESUME CHECK'
-  end
-
-  def test_branch_resume_check_step_contains_resume_logic
-    base = McptaskRunner::ClaudeCodeBase.new
-    step = base.send(:branch_resume_check_step, project_id: 7)
-    assert_includes step, 'RESUME'
-    assert_includes step, 'SKIP steps 2-3'
-  end
-
-  def test_branch_resume_check_step_with_pull
-    base = McptaskRunner::ClaudeCodeBase.new
-    step = base.send(:branch_resume_check_step, project_id: 7, pull_on_main: true)
-    assert_includes step, 'git pull'
-    assert_includes step, 'git checkout main && git pull'
-  end
-
-  def test_branch_resume_check_step_without_pull
-    base = McptaskRunner::ClaudeCodeBase.new
-    step = base.send(:branch_resume_check_step, project_id: 7, pull_on_main: false)
-    refute_includes step, 'git pull'
-    assert_includes step, 'git checkout main'
+    refute base.respond_to?(:branch_resume_check_step, true),
+           'branch_resume_check_step removed — branch-based task discovery disabled (task #10464)'
   end
 
   def test_triaged_git_step_resuming_skips_checkout

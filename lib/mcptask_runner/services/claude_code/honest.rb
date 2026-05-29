@@ -19,7 +19,7 @@ module McptaskRunner
       private
 
       def build_instructions
-        project_id = project_relative_id or raise 'project_relative_id not found in CLAUDE.md'
+        project_relative_id or raise 'project_relative_id not found in CLAUDE.md'
         fetch_url = task_fetch_url
 
         <<~INSTRUCTIONS
@@ -33,7 +33,7 @@ module McptaskRunner
           #{coding_conventions_instruction}
 
           WORKFLOW:
-          #{@task_id ? triaged_git_step(resuming: @resuming) : branch_resume_check_step(project_id: project_id, pull_on_main: true)}
+          #{triaged_git_step(resuming: @resuming)}
 
           #{task_fetch_step(step_num: 2, fetch_url: fetch_url)}
 

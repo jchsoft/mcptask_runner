@@ -22,11 +22,14 @@ module McptaskRunner
         ClaudeCode::QueueAutoSquash => ClaudeCode::StoryAutoSquash
       }.freeze
 
-      # When an urgent pin fires inside a story-scoped loop, swap the story executor for the
-      # equivalent task executor — the pinned bug is a standalone Task, not a Story subtask,
-      # so loading Story context would mis-frame the work and Story triage would re-pick the
-      # interrupted subtask instead of the new bug.
+      # Urgent pin bypasses triage entirely — pinned bug is a standalone Task, must be processed
+      # directly with genius. Map every parent executor (story or @next-based) to the matching
+      # Task executor so the bug never goes through Story/@next discovery.
       URGENT_BUG_EXECUTOR_MAP = {
+        ClaudeCode::Honest => ClaudeCode::TaskManual,
+        ClaudeCode::TodayAutoSquash => ClaudeCode::TaskAutoSquash,
+        ClaudeCode::OnceAutoSquash => ClaudeCode::TaskAutoSquash,
+        ClaudeCode::QueueAutoSquash => ClaudeCode::TaskAutoSquash,
         ClaudeCode::StoryManual => ClaudeCode::TaskManual,
         ClaudeCode::StoryAutoSquash => ClaudeCode::TaskAutoSquash
       }.freeze
@@ -35,10 +38,9 @@ module McptaskRunner
 
       def triage_and_execute(executor_class, **kwargs)
         pinned_id = read_urgent_pin
-        return execute_pinned_urgent_bug(pinned_id, executor_class) if pinned_id && kwargs[:story_id] && !kwargs[:task_id]
+        task_id_for_triage = kwargs[:task_id] || @task_id
+        return execute_pinned_urgent_bug(pinned_id, executor_class) if pinned_id && (task_id_for_triage.nil? || task_id_for_triage == pinned_id)
 
-        @task_id ||= pinned_id
-        task_id_for_triage = kwargs[:task_id] || @task_id || detect_task_id_from_branch
         story_id_for_triage = kwargs[:story_id]
 
         Logger.info_stdout('[WorkLoop] Running triage to select optimal model...')
@@ -83,18 +85,16 @@ module McptaskRunner
                             triage_result: triage_result, **kwargs)
       end
 
-      # Bypass triage when an urgent pin is active inside a story-scoped loop.
-      # Story triage prompt (`Triage::Prompt::Story`) picks the first incomplete subtask of
-      # the story and ignores `task_id`, so it would re-pick the interrupted subtask forever.
-      # Run the pinned Task directly with genius — matches the "skip triage, give it OPUS"
-      # path described by the original bug report.
-      def execute_pinned_urgent_bug(pinned_id, story_executor_class)
-        bug_executor_class = URGENT_BUG_EXECUTOR_MAP.fetch(story_executor_class) do
-          Logger.warn("[WorkLoop] No urgent-bug executor mapping for #{story_executor_class.name}, using TaskAutoSquash")
+      # Bypass triage whenever an urgent pin is active. Pinned bug is hardcoded as the next
+      # piece of work — runner must not consult triage (which could pick a different task or
+      # re-pick the interrupted parent) and must not auto-resume from a sitting branch.
+      def execute_pinned_urgent_bug(pinned_id, parent_executor_class)
+        bug_executor_class = URGENT_BUG_EXECUTOR_MAP.fetch(parent_executor_class) do
+          Logger.warn("[WorkLoop] No urgent-bug executor mapping for #{parent_executor_class.name}, using TaskAutoSquash")
           ClaudeCode::TaskAutoSquash
         end
 
-        Logger.info_stdout("[WorkLoop] Urgent pin ##{pinned_id} detected in story scope — bypassing triage, running #{bug_executor_class.name} with genius")
+        Logger.info_stdout("[WorkLoop] Urgent pin ##{pinned_id} active — bypassing triage, running #{bug_executor_class.name} with genius")
         @task_id = pinned_id
         @builder&.set_model('genius')
         @builder&.set_task(task_id: pinned_id)
@@ -248,18 +248,6 @@ module McptaskRunner
           Logger.warn("[WorkLoop] No story executor mapping for #{executor_class.name}, using StoryManual")
           ClaudeCode::StoryManual
         end
-      end
-
-      def detect_task_id_from_branch
-        branch = `git branch --show-current 2>/dev/null`.strip
-        return nil if branch.empty? || branch == 'main' || branch == 'master'
-
-        match = branch.match(/(\d{4,})/)
-        return nil unless match
-
-        task_id = match[1].to_i
-        Logger.info_stdout("[WorkLoop] Detected task ID #{task_id} from branch '#{branch}'")
-        task_id
       end
 
       def triage_quota_exceeded?(triage_result)
