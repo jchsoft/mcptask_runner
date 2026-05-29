@@ -18,6 +18,12 @@ require "mcptask_runner"
 ENV.delete("MCPT_RUNNER_CABLE_URL")
 %w[MCPTASK_TOKEN WORKVECTOR_KAMR_TOKEN LLMMN_TOKEN].each { |k| ENV.delete(k) }
 
+# Hard kill switch — even if a token leaks back into ENV during a test run (test forgets
+# to clean up, subshell re-exports, .mcp.json grows a literal bearer), this flag forces
+# EventStream / TimeStatusClient / ClaudeCodeBase#execute_with_streaming to refuse real
+# network I/O. Bug #10465: real runner cards appeared on mcptask.online from test runs.
+ENV[McptaskRunner::EventStream::DISABLE_ENV] = "1"
+
 # Wipe any stale urgent-bug pin file from previous test runs (pin lives in cwd-relative tmp dir;
 # tests sharing the project root would otherwise leak pin state between cases).
 module UrgentBugPinTestCleanup

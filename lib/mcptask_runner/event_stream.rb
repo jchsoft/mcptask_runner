@@ -14,6 +14,12 @@ module McptaskRunner
     RECONNECT_THROTTLE_S = 30
     SNAPSHOT_THROTTLE_S = 0.5
 
+    # Hard kill switch — when ENV["MCPTASK_RUNNER_DISABLE"] is set the stream stays
+    # disabled even if a token + cable URL resolve. Tests set it in test_helper so
+    # a developer shell with a real WORKVECTOR_KAMR_TOKEN never spawns runner cards
+    # on mcptask.online from a `ruby test/...` invocation.
+    DISABLE_ENV = "MCPTASK_RUNNER_DISABLE"
+
     class << self
       def start_session(mode:)
         log_startup_diagnostics(mode: mode)
@@ -98,6 +104,8 @@ module McptaskRunner
       end
 
       def enabled?
+        return false unless ENV[DISABLE_ENV].to_s.empty?
+
         !resolved_token.to_s.empty? && !resolved_cable_url.to_s.empty?
       end
 

@@ -258,6 +258,8 @@ module McptaskRunner
     end
 
     def execute_with_streaming(command)
+      raise "Refusing to spawn real Claude subprocess: #{EventStream::DISABLE_ENV} is set (this test forgot to stub execute_with_streaming)" unless ENV[EventStream::DISABLE_ENV].to_s.empty?
+
       stdout_content = ''.dup
       stderr_content = ''.dup
       reset_streaming_state

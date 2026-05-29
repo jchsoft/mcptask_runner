@@ -10,12 +10,16 @@ class TimeStatusClientTest < Minitest::Test
     @prev_token = ENV.delete('MCPTASK_TOKEN')
     @prev_base = ENV.delete('MCPTASK_BASE_URL')
     @prev_account = ENV.delete('MCPTASK_ACCOUNT')
+    # The test_helper kill switch (#10465) blocks real HTTP; lift it for this file
+    # because these tests stub Net::HTTP and only exercise parsing/error paths.
+    @prev_disable = ENV.delete(McptaskRunner::EventStream::DISABLE_ENV)
   end
 
   def teardown
     ENV['MCPTASK_TOKEN'] = @prev_token if @prev_token
     ENV['MCPTASK_BASE_URL'] = @prev_base if @prev_base
     ENV['MCPTASK_ACCOUNT'] = @prev_account if @prev_account
+    ENV[McptaskRunner::EventStream::DISABLE_ENV] = @prev_disable if @prev_disable
   end
 
   def test_raises_when_token_missing

@@ -29,6 +29,7 @@ module McptaskRunner
     end
 
     def fetch
+      raise Error, "real mcptask.online HTTP disabled via #{EventStream::DISABLE_ENV}" unless ENV[EventStream::DISABLE_ENV].to_s.empty?
       raise Error, 'MCPTASK token env var not set' if token.to_s.empty?
       raise Error, 'mcptask.online base URL not found in .mcp.json' if base_url.to_s.empty?
 
