@@ -70,42 +70,31 @@ account_code: `jchsoft`' do
         instructions = triage.send(:build_instructions)
 
         assert_includes instructions, 'resuming'
-        assert_includes instructions, 'git branch --show-current'
       end
     end
   end
 
-  def test_branch_check_comes_before_task_fetch_in_instructions
+  def test_discovery_triage_disables_branch_resume
     File.stub :exist?, true do
       File.stub :read, 'project_relative_id=7
 account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
-        branch_pos = instructions.index('RESUME DETECTION')
-        fetch_pos = instructions.index('STEP 2 - FETCH')
-        analyze_pos = instructions.index('ANALYZE')
-
-        assert branch_pos, 'Instructions must include RESUME DETECTION step'
-        assert fetch_pos, 'Instructions must include FETCH step'
-        assert analyze_pos, 'Instructions must include ANALYZE step'
-        assert branch_pos < fetch_pos, 'Branch check must come before task fetch'
-        assert fetch_pos < analyze_pos, 'Task fetch must come before analyze'
+        refute_includes instructions, 'RESUME DETECTION'
+        refute_includes instructions, 'gh pr list --head'
+        assert_includes instructions, 'NO BRANCH RESUME'
+        assert_includes instructions, 'STEP 2'
       end
     end
   end
 
-  def test_instructions_include_pr_fallback_for_branches_without_task_id
-    File.stub :exist?, true do
-      File.stub :read, 'project_relative_id=7
-account_code: `jchsoft`' do
-        triage = McptaskRunner::ClaudeCode::Triage.new
-        instructions = triage.send(:build_instructions)
+  def test_pinned_triage_keeps_resume_detection
+    triage = McptaskRunner::ClaudeCode::Triage.new(task_id: 456)
+    instructions = triage.send(:build_instructions)
 
-        assert_includes instructions, 'gh pr list'
-        assert_includes instructions, 'mcptask.online'
-      end
-    end
+    assert_includes instructions, 'RESUME DETECTION'
+    assert_includes instructions, 'git branch --show-current'
   end
 
   def test_instructions_allow_genius_smart_or_primitive
@@ -222,8 +211,8 @@ account_code: `jchsoft`' do
         triage = McptaskRunner::ClaudeCode::Triage.new
         instructions = triage.send(:build_instructions)
 
-        assert_includes instructions, 'RESUME DETECTION'
         refute_includes instructions, 'LOAD STORY'
+        assert_includes instructions, 'NO BRANCH RESUME'
       end
     end
   end

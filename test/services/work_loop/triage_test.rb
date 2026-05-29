@@ -60,27 +60,13 @@ class WorkLoopTriageTest < Minitest::Test
     end
   end
 
-  def test_detect_task_id_from_branch_returns_nil_on_main
+  def test_workloop_no_longer_detects_task_id_from_branch
     loop_instance = McptaskRunner::WorkLoop.new
-    # We're on main in this repo
-    assert_nil loop_instance.send(:detect_task_id_from_branch)
+    refute loop_instance.respond_to?(:detect_task_id_from_branch, true),
+           'detect_task_id_from_branch removed — sitting feature branch must not reroute work (task #10464)'
   end
 
-  def test_detect_task_id_from_branch_extracts_id_from_feature_branch
-    loop_instance = McptaskRunner::WorkLoop.new
-    loop_instance.stub(:`, "feature/9508-contact-page\n") do
-      assert_equal 9508, loop_instance.send(:detect_task_id_from_branch)
-    end
-  end
-
-  def test_detect_task_id_from_branch_returns_nil_for_branch_without_id
-    loop_instance = McptaskRunner::WorkLoop.new
-    loop_instance.stub(:`, "fix/typo\n") do
-      assert_nil loop_instance.send(:detect_task_id_from_branch)
-    end
-  end
-
-  def test_triage_uses_branch_task_id_when_no_explicit_id
+  def test_triage_runs_without_task_id_when_no_explicit_id_and_no_pin
     triage_kwargs = nil
     mock = Object.new
     def mock.run
@@ -96,11 +82,12 @@ class WorkLoopTriageTest < Minitest::Test
     McptaskRunner::ClaudeCode::Triage.stub(:new, ->(**kwargs) { triage_kwargs = kwargs; mock }) do
       McptaskRunner::ClaudeCode::Honest.stub(:new, executor_mock) do
         loop_instance = McptaskRunner::WorkLoop.new
-        loop_instance.stub(:detect_task_id_from_branch, 9508) do
+        loop_instance.stub(:read_urgent_pin, nil) do
           loop_instance.execute(:once)
         end
 
-        assert_equal 9508, triage_kwargs[:task_id]
+        assert_nil triage_kwargs[:task_id],
+                   'Triage must receive task_id=nil so it falls through to @next discovery'
       end
     end
   end

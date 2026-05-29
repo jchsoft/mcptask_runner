@@ -28,24 +28,6 @@ module McptaskRunner
         end
       end
 
-      def branch_resume_check_step(project_id:, pull_on_main: true)
-        pull_cmd = pull_on_main ? 'git checkout main && git pull' : 'git checkout main'
-        <<~STEP.strip
-          1. GIT STATE + RESUME CHECK:
-             - git branch --show-current
-             - IF main/master: #{pull_cmd} → step 2
-             - IF feature branch:
-               a) Extract task ID from branch name (e.g. "feature/9508-contact-page" → 9508)
-                  Found → INVOKE ReadMcpResourceTool server="mcptask-online" uri="mcptask://pieces/#{account_code}/{task_id}" — DIRECT MCP
-               b) No ID → check PR: gh pr list --head $(git branch --show-current) --json body --jq '.[0].body'
-                  Look for mcptask.online link → extract task ID → load task
-               c) Still nothing → #{pull_cmd} → step 2
-               d) CHECK PROGRESS (if task found):
-                  - progress >= 100 or state "Schváleno"/"Hotovo?" → #{pull_cmd} → step 2
-                  - progress < 100 → RESUME: TASKRUNNER_TASK_INFO, SKIP steps 2-3, go to step 4
-        STEP
-      end
-
       def coding_conventions_instruction
         <<~INSTRUCTION.strip
           CODING CONVENTIONS (MANDATORY):

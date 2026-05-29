@@ -139,7 +139,7 @@ module McptaskRunner
       # Builds complete instructions for @next-based auto-squash runners (once/queue/today).
       # Subclasses only need to provide task_description and workflow_notice strings.
       def build_next_task_instructions(task_description:, workflow_notice:)
-        project_id = project_relative_id or raise 'project_relative_id not found in CLAUDE.md'
+        project_relative_id or raise 'project_relative_id not found in CLAUDE.md'
         fetch_url = task_fetch_url
 
         <<~INSTRUCTIONS
@@ -149,7 +149,7 @@ module McptaskRunner
           #{task_description}
 
           WORKFLOW:
-          #{@task_id ? triaged_git_step(resuming: @resuming) : branch_resume_check_step(project_id: project_id, pull_on_main: true)}
+          #{triaged_git_step(resuming: @resuming)}
 
           #{task_fetch_step(step_num: 2, fetch_url: fetch_url)}
 

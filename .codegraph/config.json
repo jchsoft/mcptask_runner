@@ -98,6 +98,7 @@
     "**/Debug/**",
     "**/Release/**",
     "**/x64/**",
+    "**/.pio/**",
     "**/release/**",
     "**/*.app/**",
     "**/*.asar",
@@ -135,6 +136,5 @@
   "frameworks": [],
   "maxFileSize": 1048576,
   "extractDocstrings": true,
-  "trackCallSites": true,
-  "enableEmbeddings": false
+  "trackCallSites": true
 }

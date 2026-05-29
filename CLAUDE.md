@@ -1,20 +1,11 @@
-## Finding Information
+## Project-specific lookup hints
 
-| Information type | Tool | Example |
-|------------------|------|---------|
-| **Symbols** (classes, methods) | CodeGraph (`mcp__codegraph__*`) | "find `WorkLoop`" |
-| **Modules, concerns, mixins** | **LSP** `documentSymbol` or `Grep` | `module InstructionBuilding` |
-| **File structure** (all symbols) | **LSP** `documentSymbol` | complete overview of classes, modules, methods |
-| **Who calls/references a symbol** | **LSP** `findReferences` / `incomingCalls` | precise references from known position |
-| **Architecture, patterns, lessons learned** | `/memory-search` skill | "how does triage work?" |
+Generic exploration order (Memory → `/discover` → CodeGraph → LSP → Read → Grep) and skill-first MCP rules live in `~/.claude/CLAUDE.md`. mcptask-runner gotchas:
 
-**LSP tool available** (ruby-lsp plugin) — sees modules, concerns, everything CodeGraph misses. Needs file:line position, so find file via CodeGraph/Grep first, then analyze via LSP.
-**CodeGraph Ruby limitation:** No `module` indexing (concerns, namespace modules).
+- **Concerns / namespace modules** (`InstructionBuilding`, `RetryHandling`, `StreamProcessing`, `UrgentBugPin`, etc.) — CodeGraph won't index them. Use `/discover` (handles the Ruby `module` caveat) or LSP `documentSymbol` on the concern file.
 
 ## LLM Memory Notes MCP Usage
 - Memory identifier: `wv-runner` (architecture, patterns, commands, testing info)
-- **Search**: `/memory-search` skill (Haiku, compact filtered results)
-- **No direct `ReadMcpResourceTool`** for search — too verbose in context
 
 ## mcptask.online
 - Project name is: "McpTask rails runner"

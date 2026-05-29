@@ -39,8 +39,8 @@ class ClaudeCodeHonestTest < Minitest::Test
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         honest = McptaskRunner::ClaudeCode::Honest.new
         instructions = honest.send(:build_instructions)
-        assert_includes instructions, 'git checkout main'
-        assert_includes instructions, 'GIT STATE + RESUME CHECK'
+        assert_includes instructions, 'git checkout main && git pull'
+        refute_includes instructions, 'GIT STATE + RESUME CHECK'
       end
     end
   end
@@ -104,12 +104,13 @@ class ClaudeCodeHonestTest < Minitest::Test
     end
   end
 
-  def test_instructions_includes_branch_resume_check
+  def test_instructions_uses_plain_git_setup
     File.stub :exist?, true do
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         honest = McptaskRunner::ClaudeCode::Honest.new
         instructions = honest.send(:build_instructions)
-        assert_includes instructions, 'GIT STATE + RESUME CHECK'
+        assert_includes instructions, 'GIT SETUP: git checkout main && git pull'
+        refute_includes instructions, 'GIT STATE + RESUME CHECK'
       end
     end
   end
@@ -569,8 +570,8 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = today_auto_squash.send(:build_instructions)
-        assert_includes instructions, 'git checkout main'
-        assert_includes instructions, 'GIT STATE + RESUME CHECK'
+        assert_includes instructions, 'git checkout main && git pull'
+        refute_includes instructions, 'GIT STATE + RESUME CHECK'
       end
     end
   end
@@ -669,16 +670,6 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
       today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
       assert_raises(RuntimeError) do
         today_auto_squash.send(:build_instructions)
-      end
-    end
-  end
-
-  def test_instructions_includes_branch_resume_check
-    File.stub :exist?, true do
-      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
-        today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
-        instructions = today_auto_squash.send(:build_instructions)
-        assert_includes instructions, 'GIT STATE + RESUME CHECK'
       end
     end
   end
@@ -840,8 +831,8 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = queue_auto_squash.send(:build_instructions)
-        assert_includes instructions, 'git checkout main'
-        assert_includes instructions, 'GIT STATE + RESUME CHECK'
+        assert_includes instructions, 'git checkout main && git pull'
+        refute_includes instructions, 'GIT STATE + RESUME CHECK'
       end
     end
   end
@@ -955,16 +946,6 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
       end
     end
   end
-
-  def test_instructions_includes_branch_resume_check
-    File.stub :exist?, true do
-      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
-        queue_auto_squash = McptaskRunner::ClaudeCode::QueueAutoSquash.new
-        instructions = queue_auto_squash.send(:build_instructions)
-        assert_includes instructions, 'GIT STATE + RESUME CHECK'
-      end
-    end
-  end
 end
 
 class ClaudeCodeOnceAutoSquashTest < Minitest::Test
@@ -1007,8 +988,8 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
-        assert_includes instructions, 'git checkout main'
-        assert_includes instructions, 'GIT STATE + RESUME CHECK'
+        assert_includes instructions, 'git checkout main && git pull'
+        refute_includes instructions, 'GIT STATE + RESUME CHECK'
       end
     end
   end
@@ -1129,16 +1110,6 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'TIME MANAGEMENT'
         assert_includes instructions, '20 min inactive'
-      end
-    end
-  end
-
-  def test_instructions_includes_branch_resume_check
-    File.stub :exist?, true do
-      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
-        once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
-        instructions = once_auto_squash.send(:build_instructions)
-        assert_includes instructions, 'GIT STATE + RESUME CHECK'
       end
     end
   end
