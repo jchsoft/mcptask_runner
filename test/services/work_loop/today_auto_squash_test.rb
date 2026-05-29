@@ -169,6 +169,10 @@ class WorkLoopTodayAutoSquashTest < Minitest::Test
     end
   end
 
+  # First iteration returns urgent_bug_pending → runner pins the bug and the SECOND iteration
+  # bypasses triage, running the urgent-bug executor (TodayAutoSquash → TaskAutoSquash per
+  # URGENT_BUG_EXECUTOR_MAP), which must be stubbed too. current_git_branch is stubbed to 'main'
+  # so the pin is written without a real git checkout, making the test independent of the CI branch.
   def test_execute_with_today_auto_squash_continues_on_urgent_bug_pending
     call_count = [0]
     mock = Object.new
@@ -184,14 +188,18 @@ class WorkLoopTodayAutoSquashTest < Minitest::Test
 
     with_triage_stub do
       McptaskRunner::ClaudeCode::TodayAutoSquash.stub(:new, mock) do
-        Kernel.stub(:sleep, nil) do
-          Time.stub(:now, Time.new(2025, 1, 15, 19, 0)) do
-            loop_instance = McptaskRunner::WorkLoop.new
-            results = loop_instance.execute(:today_auto_squash)
+        McptaskRunner::ClaudeCode::TaskAutoSquash.stub(:new, mock) do
+          Kernel.stub(:sleep, nil) do
+            Time.stub(:now, Time.new(2025, 1, 15, 19, 0)) do
+              loop_instance = McptaskRunner::WorkLoop.new
+              results = loop_instance.stub(:current_git_branch, 'main') do
+                loop_instance.execute(:today_auto_squash)
+              end
 
-            assert_equal 2, results.length
-            assert_equal 'urgent_bug_pending', results.first['status']
-            assert_equal 'no_more_tasks', results.last['status']
+              assert_equal 2, results.length
+              assert_equal 'urgent_bug_pending', results.first['status']
+              assert_equal 'no_more_tasks', results.last['status']
+            end
           end
         end
       end
