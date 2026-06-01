@@ -247,6 +247,38 @@ class WorkLoopTriageTest < Minitest::Test
     assert_equal 'primitive',  loop_instance.send(:upgrade_model_for_resume, 'primitive',  false)
   end
 
+  def test_resolve_task_name_keeps_real_title
+    loop_instance = McptaskRunner::WorkLoop.new
+    result = loop_instance.send(:resolve_task_name, { 'task_id' => 10500, 'task_name' => 'Fix hamburger icon' }, 10500)
+    assert_equal 'Fix hamburger icon', result
+  end
+
+  def test_resolve_task_name_drops_prompt_placeholder
+    loop_instance = McptaskRunner::WorkLoop.new
+    result = loop_instance.send(:resolve_task_name, { 'task_id' => 10500, 'task_name' => 'Piece title' }, 10500)
+    assert_nil result, 'Literal prompt sample must never be published as a real name'
+  end
+
+  def test_resolve_task_name_drops_blank
+    loop_instance = McptaskRunner::WorkLoop.new
+    assert_nil loop_instance.send(:resolve_task_name, { 'task_id' => 10500, 'task_name' => '   ' }, 10500)
+    assert_nil loop_instance.send(:resolve_task_name, { 'task_id' => 10500 }, 10500)
+  end
+
+  def test_resolve_task_name_drops_name_when_task_id_overridden
+    loop_instance = McptaskRunner::WorkLoop.new
+    # triage echoed the example task_id 123; explicit pin is 10500 → name belongs to wrong context
+    result = loop_instance.send(:resolve_task_name, { 'task_id' => 123, 'task_name' => 'Whatever triage guessed' }, 10500)
+    assert_nil result
+  end
+
+  def test_resolve_task_name_keeps_name_in_discovery_mode
+    loop_instance = McptaskRunner::WorkLoop.new
+    # no explicit task_id (discovery) → trust the fetched name as-is
+    result = loop_instance.send(:resolve_task_name, { 'task_id' => 9508, 'task_name' => 'Discovered task' }, nil)
+    assert_equal 'Discovered task', result
+  end
+
   # Story detection from @next tests
 
   def test_story_executor_mapping

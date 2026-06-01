@@ -15,6 +15,10 @@ module McptaskRunner
       # mcptask @next, which still returns the interrupted task.
       URGENT_BUG_PIN_STATUSES = %w[urgent_bug_pending preexisting_test_errors].freeze
 
+      # Literal sample title shipped in the triage prompt (task_base.rb / story.rb). Weak
+      # models that skip the STEP 2 fetch echo it verbatim — never publish it as a real name.
+      PLACEHOLDER_TASK_NAME = 'Piece title'
+
       STORY_EXECUTOR_MAP = {
         ClaudeCode::Honest => ClaudeCode::StoryManual,
         ClaudeCode::TodayAutoSquash => ClaudeCode::StoryAutoSquash,
@@ -69,7 +73,7 @@ module McptaskRunner
         model_override = upgrade_model_for_resume(model_override, resuming)
         Logger.info_stdout("[WorkLoop] Triage recommended model: #{model_override} (task_id: #{triaged_task_id}, resuming: #{resuming})")
         @builder&.set_model(model_override)
-        @builder&.set_task(task_id: triaged_task_id, task_name: triage_result['task_name'])
+        @builder&.set_task(task_id: triaged_task_id, task_name: resolve_task_name(triage_result, kwargs[:task_id]))
         @builder&.set_status(:processing)
         EventStream.emit_snapshot(@builder.to_h, force: true) if @builder
 
@@ -221,6 +225,18 @@ module McptaskRunner
         end
 
         triaged_task_id
+      end
+
+      # Triage's task_name is only trustworthy when it came from the piece triage actually
+      # fetched. Drop it when the id was overridden (name belongs to a different/placeholder
+      # context) or when it's blank / the literal prompt sample. nil → UI shows just the id.
+      def resolve_task_name(triage_result, explicit_task_id)
+        return nil if explicit_task_id && triage_result['task_id'] != explicit_task_id
+
+        name = triage_result['task_name'].to_s.strip
+        return nil if name.empty? || name == PLACEHOLDER_TASK_NAME
+
+        name
       end
 
       def extract_triage_model(triage_result)
