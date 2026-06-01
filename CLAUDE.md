@@ -12,12 +12,6 @@ Generic exploration order (Memory → `/discover` → CodeGraph → LSP → Read
 - project_relative_id=69
 - account_code: `jchsoft`
 
-## Large File Token Cost Prevention
-- **Read big file (>200 lines) once.** Then `offset`+`limit` only.
-- **Batch edits.** All changes to same file = one turn. Each turn re-sends full conversation history.
-- **File >500 lines?** Split first, edit smaller parts.
-- **$2 → $17 disaster:** repeated large-file edits = re-sent file content each turn = 8× cost.
-
 ## CI & Quality Checks
 - **Full CI**: `ruby bin/ci` — all checks (tests, RuboCop, Reek, Flay)
 - **Tests only**: `ruby test_runner.rb`
