@@ -1,5 +1,5 @@
 # Spice level to Claude model ID mapping.
 # Edit this file to update model IDs without source code changes.
-genius: 'claude-opus-4-7'
+genius: 'claude-opus-4-8'
 smart: 'claude-sonnet-4-6'
 primitive: 'claude-haiku-4-5-20251001'
