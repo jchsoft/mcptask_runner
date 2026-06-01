@@ -27,7 +27,7 @@ module McptaskRunner
     def call
       raise Error, "real mcptask.online HTTP disabled via #{EventStream::DISABLE_ENV}" unless ENV[EventStream::DISABLE_ENV].to_s.empty?
 
-      validate_config!
+      check_config
 
       title = prompt('Bug title: ')
       description = collect_description
@@ -47,10 +47,17 @@ module McptaskRunner
 
     private
 
-    # :reek:MissingSafeMethod
-    def validate_config!
-      raise Error, 'MCPTASK token not configured (check .mcp.json or MCPTASK_TOKEN env var)' if token.to_s.empty?
-      raise Error, 'mcptask.online base URL not found (check .mcp.json or MCPTASK_BASE_URL env var)' if base_url.to_s.empty?
+    def check_config
+      raise Error, token_error if token.to_s.empty?
+      raise Error, base_url_error if base_url.to_s.empty?
+    end
+
+    def token_error
+      'MCPTASK token not configured (check .mcp.json or MCPTASK_TOKEN env var)'
+    end
+
+    def base_url_error
+      'mcptask.online base URL not found (check .mcp.json or MCPTASK_BASE_URL env var)'
     end
 
     def prompt(message)
