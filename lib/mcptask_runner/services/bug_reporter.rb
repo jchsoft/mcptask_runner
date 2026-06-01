@@ -47,6 +47,7 @@ module McptaskRunner
 
     private
 
+    # :reek:MissingSafeMethod
     def validate_config!
       raise Error, 'MCPTASK token not configured (check .mcp.json or MCPTASK_TOKEN env var)' if token.to_s.empty?
       raise Error, 'mcptask.online base URL not found (check .mcp.json or MCPTASK_BASE_URL env var)' if base_url.to_s.empty?
