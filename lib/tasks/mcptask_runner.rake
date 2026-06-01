@@ -187,6 +187,7 @@ namespace :mcptask_runner do
   def display_version_info
     puts '=' * 80
     puts "[McptaskRunner] Version: #{McptaskRunner::VERSION}"
+    puts "[McptaskRunner] #{McptaskRunner::ClaudeCodeBase.model_source_description}"
     puts '=' * 80
   end
 

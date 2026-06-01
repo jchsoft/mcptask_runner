@@ -14,8 +14,9 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
     assert_includes cmd, '-p'
     assert_includes cmd, 'test instructions'
     assert_includes cmd, '--model'
-    assert_includes cmd, 'claude-opus-4-7', 'genius alias must map to pinned 200K model ID'
-    refute_includes cmd, 'claude-opus-4-7[1m]', 'must not request 1M context variant'
+    genius_id = McptaskRunner::ClaudeCodeBase::MODEL_IDS.fetch('genius')
+    assert_includes cmd, genius_id, 'genius alias must map to configured model ID'
+    refute_includes cmd, "#{genius_id}[1m]", 'must not request 1M context variant'
   end
 
   def test_build_command_with_continue_session
@@ -54,7 +55,7 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
     base = McptaskRunner::ClaudeCodeBase.new
     base.define_singleton_method(:model_name) { 'smart' }
 
-    assert_equal 'claude-sonnet-4-6', base.send(:effective_model_name)
+    assert_equal McptaskRunner::ClaudeCodeBase::MODEL_IDS.fetch('smart'), base.send(:effective_model_name)
   end
 
   def test_effective_model_name_passes_through_unknown_id

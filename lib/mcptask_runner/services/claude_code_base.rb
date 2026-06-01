@@ -64,19 +64,28 @@ module McptaskRunner
     include Concerns::InstructionBuilding
     include Concerns::HeartbeatMonitoring
 
-    # Pin to standard 200K-context model IDs (no [1m] suffix) so context overflows fail fast
-    # at ~200K instead of growing to 1M across --continue retry chains.
-    # Update IDs in config/models.yml when newer models are released.
-    MODELS_FILE = File.join(__dir__, '..', '..', '..', '..', 'config', 'models.yml').freeze
+    # Spice-level => Claude model ID mapping.
+    #
+    # The host project (where the runner runs) may provide config/models.yml to PIN
+    # specific versioned IDs (e.g. standard 200K-context variants, no [1m] suffix) so
+    # context overflows fail fast at ~200K instead of growing to 1M across --continue
+    # retry chains. When that file is absent we fall back to generic, unversioned CLI
+    # aliases — Claude resolves them to its current default models.
+    GENERIC_MODEL_IDS = {
+      'genius' => 'opus',
+      'smart' => 'sonnet',
+      'primitive' => 'haiku'
+    }.freeze
 
-    MODEL_IDS = if File.exist?(MODELS_FILE)
-                  YAML.load_file(MODELS_FILE).freeze
-    else
-                  {
-                    'genius' => 'claude-opus-4-7',
-                    'smart' => 'claude-sonnet-4-6',
-                    'primitive' => 'claude-haiku-4-5-20251001'
-                  }.freeze
+    MODELS_FILE = File.join(Dir.pwd, 'config', 'models.yml').freeze
+    MODEL_IDS_FROM_FILE = File.exist?(MODELS_FILE)
+    MODEL_IDS = (MODEL_IDS_FROM_FILE ? YAML.load_file(MODELS_FILE) : GENERIC_MODEL_IDS).freeze
+
+    # One-line description of where model IDs came from, for the boot banner.
+    def self.model_source_description
+      pairs = MODEL_IDS.map { |level, id| "#{level}=#{id}" }.join(', ')
+      source = MODEL_IDS_FROM_FILE ? "config/models.yml (pinned): #{pairs}" : "generic aliases (no config/models.yml): #{pairs}"
+      "Models: #{source}"
     end
 
     # Per-attempt streaming/termination flags. Collected into one struct so the host
