@@ -56,15 +56,40 @@ class LoggerTest < Minitest::Test
     # Clean up first
     FileUtils.rm_rf('log') if Dir.exist?('log')
 
-    # Create default logger (should create log directory)
+    # Create default logger (should create log directory and timestamped file)
     McptaskRunner::Logger.logger = nil
     McptaskRunner::Logger.logger
 
     assert Dir.exist?('log'), 'log directory should be created'
-    assert File.exist?('log/mcptask_runner.log'), 'log file should be created'
+    assert McptaskRunner::Logger.run_log_path, 'run_log_path should be set after logger init'
+    assert File.exist?(McptaskRunner::Logger.run_log_path), 'timestamped log file should be created'
+    assert_match(/mcptask_runner_\d{8}_\d{6}\.log\z/, McptaskRunner::Logger.run_log_path)
 
     # Clean up
     FileUtils.rm_rf('log') if Dir.exist?('log')
+  end
+
+  def test_run_log_path_cleared_on_logger_reset
+    McptaskRunner::Logger.logger = nil
+    McptaskRunner::Logger.logger
+    assert McptaskRunner::Logger.run_log_path
+
+    McptaskRunner::Logger.logger = nil
+    assert_nil McptaskRunner::Logger.run_log_path
+  end
+
+  def test_latest_run_log_returns_most_recent_file
+    dir = 'log'
+    FileUtils.mkdir_p(dir)
+    older = File.join(dir, 'mcptask_runner_20260101_080000.log')
+    newer = File.join(dir, 'mcptask_runner_20260601_120000.log')
+    File.write(older, 'old')
+    File.write(newer, 'new')
+
+    assert_equal newer, McptaskRunner::Logger.latest_run_log
+  ensure
+    File.delete(older) if File.exist?(older)
+    File.delete(newer) if File.exist?(newer)
   end
 
   def test_multiple_messages_accumulate_in_log

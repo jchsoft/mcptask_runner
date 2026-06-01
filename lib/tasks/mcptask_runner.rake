@@ -1,4 +1,10 @@
 namespace :mcptask_runner do
+  desc 'Report a bug: prompts for title/description, creates bug piece on mcptask.online with run log attached'
+  task bug_report: :environment do
+    require 'mcptask_runner/services/bug_reporter'
+    McptaskRunner::BugReporter.call
+  end
+
   namespace :manual do
     MODES = %i[once once_dry today daily review reviews workflow queue].freeze
 

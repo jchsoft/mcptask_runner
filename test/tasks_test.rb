@@ -229,4 +229,19 @@ class TasksTest < Minitest::Test
     assert content.include?("ignore_quota_enabled?"), "Should have ignore_quota helper method"
     assert content.include?("ignore_quota:"), "Should pass ignore_quota to WorkLoop"
   end
+
+  def test_rake_file_defines_bug_report_task
+    rake_file = File.join(File.dirname(__FILE__), "..", "lib", "tasks", "mcptask_runner.rake")
+    content = File.read(rake_file)
+
+    assert content.include?("task bug_report"), "Should define bug_report task"
+    assert content.include?("BugReporter.call"), "Should call BugReporter.call"
+  end
+
+  def test_rake_file_bug_report_task_has_description
+    rake_file = File.join(File.dirname(__FILE__), "..", "lib", "tasks", "mcptask_runner.rake")
+    content = File.read(rake_file)
+
+    assert content.include?("bug piece"), "bug_report task should mention bug piece in description"
+  end
 end
