@@ -15,3 +15,10 @@
 # command: [ollama, launch, claude]
 #
 # Without this file the runner autodetects the claude binary (or uses $CLAUDE_PATH).
+
+# command: [ollama, launch, claude]
+# or
+# command:
+#     - ollama
+#     - launch
+#     - claude
