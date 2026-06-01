@@ -14,7 +14,7 @@ class SnapshotBuilderTest < Minitest::Test
 
   def test_initial_snapshot_fields
     h = @builder.to_h
-    assert_equal 1,              h[:schema_version]
+    assert_equal 2,              h[:schema_version]
     assert_equal "sess-uuid-123", h[:session_id]
     assert_equal "test-machine",  h[:machine_id]
     assert_equal "starting",      h[:status]
@@ -25,6 +25,7 @@ class SnapshotBuilderTest < Minitest::Test
     assert_nil   h[:error_message]
     assert_nil   h[:closed_at]
     assert_nil   h[:ttl_seconds]
+    assert_nil   h[:thinking]
     assert_equal [], h[:active_actions]
   end
 
@@ -45,6 +46,47 @@ class SnapshotBuilderTest < Minitest::Test
     @builder.set_todos([{ content: "Old", status: "pending", activeForm: "Old" }])
     @builder.set_task(task_id: 43, task_name: "Next")
     assert_equal [], @builder.to_h[:todo_list]
+  end
+
+  def test_set_task_clears_prior_thinking
+    @builder.set_thinking("old thought")
+    @builder.set_task(task_id: 43, task_name: "Next")
+    assert_nil @builder.to_h[:thinking]
+  end
+
+  # ---- set_thinking (ephemeral, monotonic-clock TTL) ----
+
+  def test_set_thinking_appears_in_snapshot
+    @builder.set_thinking("Considering the edge case")
+    assert_equal "Considering the edge case", @builder.to_h[:thinking]
+  end
+
+  def test_set_thinking_ignores_empty
+    @builder.set_thinking("")
+    assert_nil @builder.to_h[:thinking]
+    @builder.set_thinking("   ")
+    assert_nil @builder.to_h[:thinking]
+  end
+
+  def test_set_thinking_truncated_to_500_chars
+    @builder.set_thinking("x" * 800)
+    assert_equal 500, @builder.to_h[:thinking].length
+  end
+
+  def test_thinking_expires_after_ttl
+    @builder.set_thinking("stale thought")
+    # Push monotonic clock past THINKING_TTL_S so build_snapshot drops it.
+    future = Process.clock_gettime(Process::CLOCK_MONOTONIC) +
+             McptaskRunner::SnapshotBuilder::THINKING_TTL_S + 1
+    Process.stub(:clock_gettime, future) do
+      assert_nil @builder.to_h[:thinking]
+    end
+  end
+
+  def test_close_clears_thinking
+    @builder.set_thinking("last thought")
+    @builder.close
+    assert_nil @builder.to_h[:thinking]
   end
 
   # ---- set_model ----
@@ -230,6 +272,22 @@ class SnapshotBuilderTest < Minitest::Test
     refute_nil action[:started_at]
   end
 
+  def test_tool_started_surfaces_description
+    @builder.tool_started(tool_id: "t1", name: "Bash", summary: "git show", description: "Show view and CSS diff")
+    action = @builder.to_h[:active_actions].first
+    assert_equal "Show view and CSS diff", action[:description]
+  end
+
+  def test_tool_started_description_defaults_nil
+    @builder.tool_started(tool_id: "t1", name: "Bash", summary: "ls")
+    assert_nil @builder.to_h[:active_actions].first[:description]
+  end
+
+  def test_tool_started_description_truncated_to_200_chars
+    @builder.tool_started(tool_id: "t1", name: "Bash", summary: "x", description: "d" * 300)
+    assert_equal 200, @builder.to_h[:active_actions].first[:description].length
+  end
+
   def test_tool_finished_removes_from_active_actions
     @builder.tool_started(tool_id: "t1", name: "Bash", summary: "bin/rails test")
     @builder.tool_finished(tool_id: "t1")
@@ -299,7 +357,7 @@ class SnapshotBuilderTest < Minitest::Test
   def test_to_h_keys_match_schema_contract
     required_keys = %i[
       schema_version session_id machine_id task_id task_name
-      status model active_actions last_activity_at error_message
+      status model active_actions thinking last_activity_at error_message
       quota closed_at ttl_seconds updated_at
     ]
     h = @builder.to_h

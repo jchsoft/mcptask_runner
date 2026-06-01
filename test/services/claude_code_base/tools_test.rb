@@ -25,6 +25,29 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     assert_equal 0, builder.active_tool_count
   end
 
+  def test_track_tool_event_captures_thinking
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = '{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"Weighing two approaches"}]}}'
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_tool_event, line) }
+
+    assert_equal "Weighing two approaches", base.instance_variable_get(:@snapshot_builder).to_h[:thinking]
+  end
+
+  def test_track_tool_event_captures_tool_description
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = JSON.generate(
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "t1", name: "Bash",
+                             input: { command: "git show", description: "Show view and CSS diff" } }] }
+    )
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_tool_event, line) }
+
+    action = base.instance_variable_get(:@snapshot_builder).to_h[:active_actions].first
+    assert_equal "Show view and CSS diff", action[:description]
+  end
+
   def test_track_tool_event_captures_todos_from_todowrite
     base = McptaskRunner::ClaudeCodeBase.new
     todos = [

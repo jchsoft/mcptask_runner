@@ -55,10 +55,14 @@ module McptaskRunner
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         content_items.each do |item|
           case item['type']
+          when 'thinking'
+            @snapshot_builder.set_thinking(item['thinking'])
+            EventStream.emit_snapshot(@snapshot_builder.to_h)
           when 'tool_use'
             summary = summarize_tool_input(item['name'], item['input'])
             @snapshot_builder.set_todos(item.dig('input', 'todos')) if item['name'] == 'TodoWrite'
-            @snapshot_builder.tool_started(tool_id: item['id'], name: item['name'], summary: summary)
+            @snapshot_builder.tool_started(tool_id: item['id'], name: item['name'], summary: summary,
+                                           description: item.dig('input', 'description'))
             EventStream.emit_snapshot(@snapshot_builder.to_h)
             Logger.debug "[#{@log_tag}] [tool_tracking] Tool started: #{item['name']} (#{item['id']}) #{summary}"
             check_stall(@stall_detector&.observe_tool_use(item))

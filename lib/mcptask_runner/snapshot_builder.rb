@@ -8,7 +8,17 @@ module McptaskRunner
   # Durations use monotonic clock internally; wall-clock only for ISO 8601
   # timestamp fields (last_activity_at, updated_at, started_at, closed_at).
   class SnapshotBuilder
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
+
+    # Latest thinking block self-expires after this many seconds of quiet, so a
+    # stale thought never lingers in the snapshot once Claude moves on.
+    THINKING_TTL_S = 30
+
+    # Latest thought + its monotonic stamp, bundled so build_snapshot can age it out.
+    Thought = Data.define(:text, :mono_at)
+
+    # End-of-session tombstone: when the session closed + how long the server keeps it.
+    Tombstone = Data.define(:closed_at, :ttl_seconds)
 
     VALID_STATUSES = %w[starting triage processing waiting finished stalled frozen error closed].freeze
 
@@ -41,8 +51,8 @@ module McptaskRunner
       @error_message = nil
       @active_actions = {}
       @todos = []
-      @closed_at = nil
-      @ttl_seconds = nil
+      @thought = nil
+      @tombstone = nil
       @last_activity_at = Time.now.utc
     end
 
@@ -51,6 +61,7 @@ module McptaskRunner
         @task_id = task_id
         @task_name = task_name
         @todos = [] # prior task's TodoWrite must not leak into next task
+        @thought = nil # nor prior task's last thought
         touch_activity
       end
     end
@@ -89,14 +100,27 @@ module McptaskRunner
       end
     end
 
-    def tool_started(tool_id:, name:, summary:)
+    def tool_started(tool_id:, name:, summary:, description: nil)
       @mutex.synchronize do
         @active_actions[tool_id] = {
           name: name,
           summary: summary.to_s[0, 120],
+          description: description&.to_s&.slice(0, 200),
           mono_started_at: Process.clock_gettime(Process::CLOCK_MONOTONIC),
           started_at: Time.now.utc.iso8601(3)
         }
+        touch_activity
+      end
+    end
+
+    # Latest thinking block. Stored with a monotonic stamp so build_snapshot can
+    # drop it once stale (see current_thinking). Empty/redacted ("") thoughts skipped.
+    def set_thinking(text)
+      text = text.to_s.strip
+      return if text.empty?
+
+      @mutex.synchronize do
+        @thought = Thought.new(text: text[0, 500], mono_at: Process.clock_gettime(Process::CLOCK_MONOTONIC))
         touch_activity
       end
     end
@@ -122,10 +146,10 @@ module McptaskRunner
     def close(ttl_seconds: 60)
       @mutex.synchronize do
         @status = "closed"
-        @closed_at = Time.now.utc.iso8601(3)
-        @ttl_seconds = ttl_seconds
+        @tombstone = Tombstone.new(closed_at: Time.now.utc.iso8601(3), ttl_seconds: ttl_seconds)
         @error_message = nil
         @active_actions.clear
+        @thought = nil
         touch_activity
       end
     end
@@ -184,12 +208,13 @@ module McptaskRunner
         status:           @status,
         model:            @model,
         active_actions:   build_active_actions(now_mono),
+        thinking:         current_thinking(now_mono),
         todo_list:        @todos.dup,
         last_activity_at: @last_activity_at.iso8601(3),
         error_message:    @error_message,
         quota:            @quota ? { per_day_hours: @quota[:per_day_hours], already_worked_hours: @quota[:already_worked_hours] } : nil,
-        closed_at:        @closed_at,
-        ttl_seconds:      @ttl_seconds,
+        closed_at:        @tombstone&.closed_at,
+        ttl_seconds:      @tombstone&.ttl_seconds,
         updated_at:       Time.now.utc.iso8601(3)
       }.freeze
     end
@@ -198,13 +223,21 @@ module McptaskRunner
       @active_actions.map do |tool_id, action|
         elapsed = (now_mono - action[:mono_started_at]).round
         {
-          tool_id:    tool_id,
-          name:       action[:name],
-          summary:    action[:summary],
-          started_at: action[:started_at],
-          elapsed_s:  elapsed
+          tool_id:     tool_id,
+          name:        action[:name],
+          summary:     action[:summary],
+          description: action[:description],
+          started_at:  action[:started_at],
+          elapsed_s:   elapsed
         }
       end
+    end
+
+    def current_thinking(now_mono)
+      return nil unless @thought
+      return nil if (now_mono - @thought.mono_at) > THINKING_TTL_S
+
+      @thought.text
     end
 
     def normalize_todo(todo)
