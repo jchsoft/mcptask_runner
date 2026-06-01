@@ -7,7 +7,7 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
     base = McptaskRunner::ClaudeCodeBase.new
     base.define_singleton_method(:model_name) { 'genius' }
 
-    cmd = base.send(:build_command, '/usr/bin/claude', 'test instructions', continue_session: false)
+    cmd = base.send(:build_command, ['/usr/bin/claude'], 'test instructions', continue_session: false)
 
     assert_equal '/usr/bin/claude', cmd[0]
     refute_includes cmd, '--continue'
@@ -23,7 +23,7 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
     base = McptaskRunner::ClaudeCodeBase.new
     base.define_singleton_method(:model_name) { 'genius' }
 
-    cmd = base.send(:build_command, '/usr/bin/claude', 'test instructions', continue_session: true)
+    cmd = base.send(:build_command, ['/usr/bin/claude'], 'test instructions', continue_session: true)
 
     assert_equal '/usr/bin/claude', cmd[0]
     assert_equal '--continue', cmd[1], 'Continue flag should be second element'
@@ -35,7 +35,7 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
     base = McptaskRunner::ClaudeCodeBase.new
     base.define_singleton_method(:model_name) { 'genius' }
 
-    cmd = base.send(:build_command, '/usr/bin/claude', 'test instructions', continue_session: false)
+    cmd = base.send(:build_command, ['/usr/bin/claude'], 'test instructions', continue_session: false)
 
     refute_includes cmd, '--max-turns'
   end
@@ -45,10 +45,28 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
     base.define_singleton_method(:model_name) { 'genius' }
     base.define_singleton_method(:max_turns) { 150 }
 
-    cmd = base.send(:build_command, '/usr/bin/claude', 'test instructions', continue_session: false)
+    cmd = base.send(:build_command, ['/usr/bin/claude'], 'test instructions', continue_session: false)
 
     assert_includes cmd, '--max-turns'
     assert_includes cmd, '150'
+  end
+
+  def test_base_command_defaults_to_resolved_claude_path
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.stub(:resolve_claude_path, '/usr/bin/claude') do
+      assert_equal ['/usr/bin/claude'], base.send(:base_command)
+    end
+  end
+
+  def test_build_command_honors_multi_token_launcher_prefix
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'genius' }
+
+    cmd = base.send(:build_command, %w[ollama launch claude], 'test instructions', continue_session: false)
+
+    assert_equal %w[ollama launch claude], cmd[0, 3], 'launcher prefix must lead the command'
+    assert_includes cmd, '-p'
+    assert_includes cmd, '--output-format=stream-json'
   end
 
   def test_effective_model_name_maps_alias_to_pinned_id

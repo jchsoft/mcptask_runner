@@ -81,11 +81,27 @@ module McptaskRunner
     MODEL_IDS_FROM_FILE = File.exist?(MODELS_FILE)
     MODEL_IDS = (MODEL_IDS_FROM_FILE ? YAML.load_file(MODELS_FILE) : GENERIC_MODEL_IDS).freeze
 
+    # Optional per-host-project launcher override. When config/launcher.yml exists in the
+    # project where the runner runs, its `command:` array REPLACES the default `[claude_path]`
+    # prefix — e.g. [ollama, launch, claude] to route through an alternate backend for testing.
+    # The runner still appends its own flags (-p, --model, --output-format=stream-json, …) and
+    # still derives --model from config/models.yml, so the stream-json contract stays intact.
+    LAUNCHER_FILE = File.join(Dir.pwd, 'config', 'launcher.yml').freeze
+    LAUNCHER_CONFIG = (File.exist?(LAUNCHER_FILE) ? YAML.load_file(LAUNCHER_FILE) : {}).freeze
+    CLAUDE_COMMAND_PREFIX = LAUNCHER_CONFIG['command'].freeze
+
     # One-line description of where model IDs came from, for the boot banner.
     def self.model_source_description
       pairs = MODEL_IDS.map { |level, id| "#{level}=#{id}" }.join(', ')
       source = MODEL_IDS_FROM_FILE ? "config/models.yml (pinned): #{pairs}" : "generic aliases (no config/models.yml): #{pairs}"
       "Models: #{source}"
+    end
+
+    # One-line description of the launch command prefix, for the boot banner.
+    def self.launcher_source_description
+      return 'Launcher: default (claude binary autodetect / CLAUDE_PATH)' unless CLAUDE_COMMAND_PREFIX
+
+      "Launcher: config/launcher.yml override -> #{CLAUDE_COMMAND_PREFIX.join(' ')}"
     end
 
     # Per-attempt streaming/termination flags. Collected into one struct so the host
@@ -139,9 +155,8 @@ module McptaskRunner
     private
 
     def attempt_execution(start_time)
-      claude_path = resolve_claude_path
       instructions = @retry_state.marker_retry_mode ? build_marker_retry_instructions : build_instructions
-      command = build_command(claude_path, instructions, continue_session: @retry_state.count.positive? || @retry_state.marker_retry_mode)
+      command = build_command(base_command, instructions, continue_session: @retry_state.count.positive? || @retry_state.marker_retry_mode)
 
       Logger.debug "[#{@log_tag}] Executing Claude with instructions (length: #{instructions.length} chars)"
       Logger.info_stdout "[#{@log_tag}] Starting real-time stream of Claude output:"
@@ -211,8 +226,14 @@ module McptaskRunner
       claude_path
     end
 
-    def build_command(claude_path, instructions, continue_session: false)
-      cmd = [claude_path]
+    # Base launch command: per-project config/launcher.yml override, else the autodetected
+    # claude binary. Returns a fresh array each call so build_command can mutate it safely.
+    def base_command
+      CLAUDE_COMMAND_PREFIX&.dup || [resolve_claude_path]
+    end
+
+    def build_command(base, instructions, continue_session: false)
+      cmd = base
       cmd << '--continue' if continue_session
       cmd.concat(['-p', instructions, '--model', effective_model_name, '--output-format=stream-json', '--verbose'])
       cmd.concat(['--max-turns', max_turns.to_s]) if max_turns

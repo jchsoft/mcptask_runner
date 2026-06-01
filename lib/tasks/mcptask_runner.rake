@@ -188,6 +188,7 @@ namespace :mcptask_runner do
     puts '=' * 80
     puts "[McptaskRunner] Version: #{McptaskRunner::VERSION}"
     puts "[McptaskRunner] #{McptaskRunner::ClaudeCodeBase.model_source_description}"
+    puts "[McptaskRunner] #{McptaskRunner::ClaudeCodeBase.launcher_source_description}"
     puts '=' * 80
   end
 
