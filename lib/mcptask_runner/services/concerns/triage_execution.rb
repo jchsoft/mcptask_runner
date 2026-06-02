@@ -96,7 +96,7 @@ module McptaskRunner
         Logger.info_stdout("[WorkLoop] Urgent pin ##{pinned_id} active — bypassing triage, running #{bug_executor_class.name} with genius")
         @task_id = pinned_id
         @builder&.set_model('genius')
-        @builder&.set_task(task_id: pinned_id)
+        @builder&.set_task(task_id: pinned_id, task_name: read_urgent_pin_name)
         @builder&.set_status(:processing)
         EventStream.emit_snapshot(@builder.to_h, force: true) if @builder
 
@@ -151,14 +151,14 @@ module McptaskRunner
 
         branch = current_git_branch
         if branch.empty? || %w[main master].include?(branch)
-          pin_urgent_bug(result['bug_task_id'])
+          pin_urgent_bug(result['bug_task_id'], result['bug_task_name'])
           return result
         end
 
         Logger.info_stdout("[WorkLoop] Urgent bug ##{result['bug_task_id']} pending — switching from '#{branch}' to main")
         success, output = checkout_main_branch
         if success
-          pin_urgent_bug(result['bug_task_id'])
+          pin_urgent_bug(result['bug_task_id'], result['bug_task_name'])
           return result
         end
 
@@ -169,14 +169,14 @@ module McptaskRunner
         result
       end
 
-      def pin_urgent_bug(bug_task_id)
+      def pin_urgent_bug(bug_task_id, task_name = nil)
         unless bug_task_id
           Logger.warn('[WorkLoop] urgent_bug_pending without bug_task_id — cannot pin; next triage will fall back to discovery')
           return
         end
 
         bug_id = bug_task_id.to_i
-        write_urgent_pin(bug_id)
+        write_urgent_pin(bug_id, task_name)
         @task_id = bug_id
         Logger.info_stdout("[WorkLoop] Urgent pin set — next triage targets piece ##{bug_id}")
       end
