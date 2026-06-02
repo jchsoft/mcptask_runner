@@ -13,6 +13,7 @@ module McptaskRunner
     MCP_SERVER_KEY = "mcptask-online"
     RECONNECT_THROTTLE_S = 30
     SNAPSHOT_THROTTLE_S = 0.5
+    FINAL_FRAME_GRACE_S = 0.5
 
     # Hard kill switch — when ENV["MCPTASK_RUNNER_DISABLE"] is set the stream stays
     # disabled even if a token + cable URL resolve. Tests set it in test_helper so
@@ -95,6 +96,11 @@ module McptaskRunner
         return unless enabled?
 
         @mutex&.synchronize do
+          # Grace window so the final forced "closed" snapshot frame leaves the
+          # socket and is processed server-side before close tears the connection
+          # down — otherwise the last frame races the FIN and the web card freezes
+          # on the previous snapshot. No ACK protocol, so a short sleep is the fix.
+          sleep(FINAL_FRAME_GRACE_S) if @ws&.open?
           @ws&.close
           @ws = nil
           @session_id = nil

@@ -108,6 +108,22 @@ class EventStreamTest < Minitest::Test
     end
   end
 
+  def test_end_session_grace_then_close_when_open
+    ws = fake_ws
+    McptaskRunner::EventStream.instance_variable_set(:@ws, ws)
+    slept = []
+
+    McptaskRunner::EventStream.stub(:sleep, ->(s) { slept << s }) do
+      with_env("MCPT_RUNNER_CABLE_URL" => "ws://localhost:3000/cable", "MCPTASK_TOKEN" => "abc") do
+        McptaskRunner::EventStream.end_session
+      end
+    end
+
+    assert_equal [ McptaskRunner::EventStream::FINAL_FRAME_GRACE_S ], slept, "must grace-wait before close"
+    assert ws.closed, "socket must be closed after grace"
+    assert_nil McptaskRunner::EventStream.instance_variable_get(:@ws)
+  end
+
   def test_channel_identifier_is_valid_json
     parsed = JSON.parse(McptaskRunner::EventStream::CHANNEL_IDENTIFIER)
     assert_equal "RunnerSessionChannel", parsed["channel"]
@@ -217,9 +233,10 @@ class EventStreamTest < Minitest::Test
 
   private
 
-  FakeWs = Struct.new(:sent) do
-    def open? = true
+  FakeWs = Struct.new(:sent, :closed) do
+    def open? = !closed
     def send(msg) = sent << msg
+    def close = self.closed = true
   end
 
   def fake_ws
