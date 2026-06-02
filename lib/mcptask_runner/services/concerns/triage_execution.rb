@@ -55,13 +55,8 @@ module McptaskRunner
 
         return triage_result if triage_result['status'] == 'no_more_tasks'
 
-        if !@ignore_quota && triage_result['status'] == 'quota_exceeded'
-          Logger.info_stdout('[WorkLoop] Triage reported quota exceeded')
-          return { 'status' => 'quota_exceeded' }
-        end
-
-        if !@ignore_quota && triage_quota_exceeded?(triage_result)
-          Logger.info_stdout('[WorkLoop] Quota already exceeded before execution, skipping task')
+        if !@ignore_quota && quota_exceeded_per_triage?(triage_result)
+          Logger.info_stdout('[WorkLoop] Quota exceeded before execution, skipping task')
           return { 'status' => 'quota_exceeded' }
         end
 
@@ -264,6 +259,28 @@ module McptaskRunner
           Logger.warn("[WorkLoop] No story executor mapping for #{executor_class.name}, using StoryManual")
           ClaudeCode::StoryManual
         end
+      end
+
+      # Whether triage's verdict really means we must stop for quota.
+      # The hours block (per_day/already_worked) is authoritative — it comes straight from the
+      # mcptask://user read. A bare status="quota_exceeded" that the hours contradict is a model
+      # glitch (e.g. SessionStart hook polluting the child session); trust the math over the string.
+      def quota_exceeded_per_triage?(triage_result)
+        if triage_result['hours']
+          exceeded = triage_quota_exceeded?(triage_result)
+          if !exceeded && triage_result['status'] == 'quota_exceeded'
+            Logger.warn('[WorkLoop] Triage status=quota_exceeded but hours show quota NOT exceeded — ignoring bogus verdict, continuing')
+          end
+          return exceeded
+        end
+
+        # No hours block to verify against — fall back to trusting the status string.
+        if triage_result['status'] == 'quota_exceeded'
+          Logger.info_stdout('[WorkLoop] Triage reported quota exceeded (no hours block to verify)')
+          return true
+        end
+
+        false
       end
 
       def triage_quota_exceeded?(triage_result)

@@ -89,6 +89,45 @@ class WorkLoopQuotaPrecheckTest < Minitest::Test
     end
   end
 
+  def test_bogus_quota_exceeded_status_ignored_when_hours_under_quota
+    # Regression: triage child glitched (e.g. SessionStart hook pollution) and emitted
+    # status="quota_exceeded" while its own hours block (2.2 < 8) shows quota NOT reached.
+    # The hours math is authoritative — the runner must ignore the bogus verdict and execute.
+    executor_called = false
+    executor_mock = Object.new
+    executor_mock.define_singleton_method(:run) do
+      executor_called = true
+      { 'status' => 'success', 'hours' => { 'per_day' => 8, 'task_estimated' => 1 } }
+    end
+
+    triage = Object.new
+    triage.define_singleton_method(:run) do
+      { 'status' => 'quota_exceeded', 'recommended_model' => 'genius', 'task_id' => 777,
+        'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 2.2, 'task_estimated' => 0 } }
+    end
+
+    McptaskRunner::ClaudeCode::Triage.stub(:new, triage) do
+      McptaskRunner::ClaudeCode::Honest.stub(:new, executor_mock) do
+        result = McptaskRunner::WorkLoop.new.execute(:once)
+        assert_equal 'success', result['status']
+        assert executor_called, 'Executor must run when hours show quota is not exceeded, despite bogus status'
+      end
+    end
+  end
+
+  def test_quota_exceeded_status_honored_when_no_hours_block
+    # No hours block to verify against → fall back to trusting the status string.
+    triage = Object.new
+    triage.define_singleton_method(:run) do
+      { 'status' => 'quota_exceeded', 'recommended_model' => 'genius', 'task_id' => 0, 'resuming' => false }
+    end
+
+    McptaskRunner::ClaudeCode::Triage.stub(:new, triage) do
+      result = McptaskRunner::WorkLoop.new.execute(:once)
+      assert_equal 'quota_exceeded', result['status']
+    end
+  end
+
   def test_triage_and_execute_proceeds_when_quota_not_exceeded
     executor_mock = Object.new
     def executor_mock.run
