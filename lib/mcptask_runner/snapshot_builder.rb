@@ -14,8 +14,15 @@ module McptaskRunner
     # stale thought never lingers in the snapshot once Claude moves on.
     THINKING_TTL_S = 30
 
+    # Text message from Claude (non-thinking, non-tool text) self-expires after
+    # this many seconds so old messages don't persist into the next work cycle.
+    MESSAGE_TTL_S = 60
+
     # Latest thought + its monotonic stamp, bundled so build_snapshot can age it out.
     Thought = Data.define(:text, :mono_at)
+
+    # Latest text message from Claude (between tool calls), same shape as Thought.
+    Message = Data.define(:text, :mono_at)
 
     # End-of-session tombstone: when the session closed + how long the server keeps it.
     Tombstone = Data.define(:closed_at, :ttl_seconds)
@@ -52,6 +59,7 @@ module McptaskRunner
       @active_actions = {}
       @todos = []
       @thought = nil
+      @message = nil
       @tombstone = nil
       @last_activity_at = Time.now.utc
     end
@@ -62,6 +70,7 @@ module McptaskRunner
         @task_name = task_name
         @todos = [] # prior task's TodoWrite must not leak into next task
         @thought = nil # nor prior task's last thought
+        @message = nil # nor its last text message
         touch_activity
       end
     end
@@ -125,6 +134,18 @@ module McptaskRunner
       end
     end
 
+    # Text message Claude outputs between tool calls. Stored with a monotonic stamp
+    # so build_snapshot can age it out (see current_message). Empty text skipped.
+    def set_message(text)
+      text = text.to_s.strip
+      return if text.empty?
+
+      @mutex.synchronize do
+        @message = Message.new(text: text[0, 500], mono_at: Process.clock_gettime(Process::CLOCK_MONOTONIC))
+        touch_activity
+      end
+    end
+
     def tool_finished(tool_id:)
       @mutex.synchronize do
         @active_actions.delete(tool_id)
@@ -150,6 +171,7 @@ module McptaskRunner
         @error_message = nil
         @active_actions.clear
         @thought = nil
+        @message = nil
         touch_activity
       end
     end
@@ -209,6 +231,7 @@ module McptaskRunner
         model:            @model,
         active_actions:   build_active_actions(now_mono),
         thinking:         current_thinking(now_mono),
+        message:          current_message(now_mono),
         todo_list:        @todos.dup,
         last_activity_at: @last_activity_at.iso8601(3),
         error_message:    @error_message,
@@ -238,6 +261,13 @@ module McptaskRunner
       return nil if (now_mono - @thought.mono_at) > THINKING_TTL_S
 
       @thought.text
+    end
+
+    def current_message(now_mono)
+      return nil unless @message
+      return nil if (now_mono - @message.mono_at) > MESSAGE_TTL_S
+
+      @message.text
     end
 
     def normalize_todo(todo)

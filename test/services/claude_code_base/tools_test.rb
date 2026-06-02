@@ -25,6 +25,26 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     assert_equal 0, builder.active_tool_count
   end
 
+  def test_track_tool_event_captures_text_message
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = '{"type":"assistant","message":{"content":[{"type":"text","text":"Let me view the reported screenshot to confirm the visual issue."}]}}'
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_tool_event, line) }
+
+    assert_equal "Let me view the reported screenshot to confirm the visual issue.",
+                 base.instance_variable_get(:@snapshot_builder).to_h[:message],
+                 "text content items must reach the snapshot so the web card shows them"
+  end
+
+  def test_track_tool_event_ignores_empty_text
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = '{"type":"assistant","message":{"content":[{"type":"text","text":""}]}}'
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_tool_event, line) }
+
+    assert_nil base.instance_variable_get(:@snapshot_builder).to_h[:message]
+  end
+
   def test_track_tool_event_captures_thinking
     base = McptaskRunner::ClaudeCodeBase.new
     line = '{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"Weighing two approaches"}]}}'
