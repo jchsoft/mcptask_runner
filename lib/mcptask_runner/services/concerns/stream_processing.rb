@@ -55,6 +55,12 @@ module McptaskRunner
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         content_items.each do |item|
           case item['type']
+          when 'text'
+            text = item['text'].to_s.strip
+            unless text.empty?
+              @snapshot_builder.set_message(text)
+              EventStream.emit_snapshot(@snapshot_builder.to_h)
+            end
           when 'thinking'
             text = item['thinking'].to_s.strip
             @snapshot_builder.set_thinking(text.empty? ? '...' : text)

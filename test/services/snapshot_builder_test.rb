@@ -26,6 +26,7 @@ class SnapshotBuilderTest < Minitest::Test
     assert_nil   h[:closed_at]
     assert_nil   h[:ttl_seconds]
     assert_nil   h[:thinking]
+    assert_nil   h[:message]
     assert_equal [], h[:active_actions]
   end
 
@@ -52,6 +53,12 @@ class SnapshotBuilderTest < Minitest::Test
     @builder.set_thinking("old thought")
     @builder.set_task(task_id: 43, task_name: "Next")
     assert_nil @builder.to_h[:thinking]
+  end
+
+  def test_set_task_clears_prior_message
+    @builder.set_message("Let me check the file")
+    @builder.set_task(task_id: 43, task_name: "Next")
+    assert_nil @builder.to_h[:message]
   end
 
   # ---- set_thinking (ephemeral, monotonic-clock TTL) ----
@@ -87,6 +94,40 @@ class SnapshotBuilderTest < Minitest::Test
     @builder.set_thinking("last thought")
     @builder.close
     assert_nil @builder.to_h[:thinking]
+  end
+
+  # ---- set_message (ephemeral, monotonic-clock TTL) ----
+
+  def test_set_message_appears_in_snapshot
+    @builder.set_message("Let me view the screenshot")
+    assert_equal "Let me view the screenshot", @builder.to_h[:message]
+  end
+
+  def test_set_message_ignores_empty
+    @builder.set_message("")
+    assert_nil @builder.to_h[:message]
+    @builder.set_message("   ")
+    assert_nil @builder.to_h[:message]
+  end
+
+  def test_set_message_truncated_to_500_chars
+    @builder.set_message("x" * 800)
+    assert_equal 500, @builder.to_h[:message].length
+  end
+
+  def test_message_expires_after_ttl
+    @builder.set_message("stale message")
+    future = Process.clock_gettime(Process::CLOCK_MONOTONIC) +
+             McptaskRunner::SnapshotBuilder::MESSAGE_TTL_S + 1
+    Process.stub(:clock_gettime, future) do
+      assert_nil @builder.to_h[:message]
+    end
+  end
+
+  def test_close_clears_message
+    @builder.set_message("last message")
+    @builder.close
+    assert_nil @builder.to_h[:message]
   end
 
   # ---- set_model ----
