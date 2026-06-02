@@ -57,6 +57,12 @@ namespace :mcptask_runner do
     end
   end
 
+  desc 'Install bundled Claude Code skills and generate a macOS LaunchAgent for weekday scheduling (set FORCE=1 to overwrite existing files)'
+  task install: :environment do
+    require 'mcptask_runner/services/installer'
+    McptaskRunner::Installer.call
+  end
+
   namespace :auto do
     desc 'Run a single task once with automatic PR squash-merge after CI passes'
     task once: :environment do
