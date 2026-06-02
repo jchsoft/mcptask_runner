@@ -56,7 +56,8 @@ module McptaskRunner
         content_items.each do |item|
           case item['type']
           when 'thinking'
-            @snapshot_builder.set_thinking(item['thinking'])
+            text = item['thinking'].to_s.strip
+            @snapshot_builder.set_thinking(text.empty? ? '...' : text)
             EventStream.emit_snapshot(@snapshot_builder.to_h)
           when 'tool_use'
             summary = summarize_tool_input(item['name'], item['input'])

@@ -114,7 +114,7 @@ module McptaskRunner
     end
 
     # Latest thinking block. Stored with a monotonic stamp so build_snapshot can
-    # drop it once stale (see current_thinking). Empty/redacted ("") thoughts skipped.
+    # drop it once stale (see current_thinking). Callers pass '...' for redacted thoughts.
     def set_thinking(text)
       text = text.to_s.strip
       return if text.empty?

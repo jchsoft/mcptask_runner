@@ -34,6 +34,16 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     assert_equal "Weighing two approaches", base.instance_variable_get(:@snapshot_builder).to_h[:thinking]
   end
 
+  def test_track_tool_event_captures_redacted_thinking_as_placeholder
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = '{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"","signature":"abc123"}]}}'
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_tool_event, line) }
+
+    assert_equal "...", base.instance_variable_get(:@snapshot_builder).to_h[:thinking],
+                 "redacted (empty) thinking must still reach the web UI as a placeholder"
+  end
+
   def test_track_tool_event_captures_tool_description
     base = McptaskRunner::ClaudeCodeBase.new
     line = JSON.generate(
