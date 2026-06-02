@@ -172,9 +172,16 @@ class SnapshotBuilderTest < Minitest::Test
     assert_equal "processing", @builder.to_h[:status]
   end
 
+  # Urgent-pin recovery bypasses triage: execute_pinned_urgent_bug jumps the builder
+  # straight from the initial "starting" state to "processing" without a triage hop.
+  def test_valid_transition_starting_to_processing_urgent_pin
+    @builder.set_status("processing")
+    assert_equal "processing", @builder.to_h[:status]
+  end
+
   def test_invalid_transition_raises
     assert_raises(McptaskRunner::InvalidTransitionError) do
-      @builder.set_status("processing") # starting → processing is invalid
+      @builder.set_status("finished") # starting → finished is invalid
     end
   end
 

@@ -27,7 +27,7 @@ module McptaskRunner
     # processing → triage: loop iterations skipping finished (story loop, executor crashed
     # before its finished-transition guard). Without it, FSM rejects legitimate loop resets.
     TRANSITIONS = {
-      "starting"   => %w[triage waiting error],
+      "starting"   => %w[triage processing waiting error],
       "triage"     => %w[processing waiting triage error],
       "processing" => %w[waiting finished stalled frozen pending triage error],
       "waiting"    => %w[processing triage finished error],
