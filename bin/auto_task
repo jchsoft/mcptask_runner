@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
+require "bundler/setup"
+require "active_support"
+require "active_support/core_ext/time"
+require "active_support/core_ext/numeric/time"
+require "mcptask_runner"
+
+task_id = ARGV[0]
+abort "Usage: bin/auto_task <task_id>" unless task_id
+
+puts "=" * 80
+puts "[McptaskRunner] Version: #{McptaskRunner::VERSION}"
+puts "[McptaskRunner] Task: ##{task_id}"
+puts "=" * 80
+
+McptaskRunner::WorkLoop.new(task_id: task_id).execute(:task_auto_squash)
