@@ -79,17 +79,12 @@ class LoggerTest < Minitest::Test
   end
 
   def test_latest_run_log_returns_most_recent_file
-    dir = 'log'
-    FileUtils.mkdir_p(dir)
-    older = File.join(dir, 'mcptask_runner_20260101_080000.log')
-    newer = File.join(dir, 'mcptask_runner_20260601_120000.log')
-    File.write(older, 'old')
-    File.write(newer, 'new')
+    older = 'log/mcptask_runner_20260101_080000.log'
+    newer = 'log/mcptask_runner_20260601_120000.log'
 
-    assert_equal newer, McptaskRunner::Logger.latest_run_log
-  ensure
-    File.delete(older) if File.exist?(older)
-    File.delete(newer) if File.exist?(newer)
+    Dir.stub :glob, [older, newer] do
+      assert_equal newer, McptaskRunner::Logger.latest_run_log
+    end
   end
 
   def test_multiple_messages_accumulate_in_log
