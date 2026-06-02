@@ -150,7 +150,8 @@ module McptaskRunner
               BEFORE emitting this status:
                 1. Commit + push current work on this task's branch (if any) — leaves PR/branch for human review or future resume
                 2. `git checkout main` — leave clean working tree so runner picks the urgent bug, not this task
-                3. Add field "bug_task_id": <relative_id of the urgent bug task you created>
+                3. Add field "bug_task_id": <relative_id of the urgent bug task you created> — REQUIRED so runner pins the new bug
+                4. Add field "bug_task_name": <name of the urgent bug task you created> — REQUIRED so runner shows the name in the card
               Loop will exit (story-locked / explicit task / single-shot) or re-triage globally (today/queue) and pick the urgent bug.
         OPTION
       end

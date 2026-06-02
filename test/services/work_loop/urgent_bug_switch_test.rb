@@ -404,4 +404,110 @@ class WorkLoopUrgentBugSwitchTest < Minitest::Test
       end
     end
   end
+
+  # --- Task name stored in pin file and passed to snapshot builder ---
+
+  def test_pin_stores_task_name_in_json_format
+    loop_instance = McptaskRunner::WorkLoop.new
+    loop_instance.define_singleton_method(:current_git_branch) { 'main' }
+
+    result = { 'status' => 'urgent_bug_pending', 'bug_task_id' => 9999, 'bug_task_name' => 'Fix: Padající testy - foo' }
+    loop_instance.send(:switch_to_main_if_urgent_bug, result)
+
+    assert File.exist?(pin_path)
+    data = JSON.parse(File.read(pin_path))
+    assert_equal '9999', data['id']
+    assert_equal 'Fix: Padající testy - foo', data['name']
+  end
+
+  def test_pin_plain_text_when_no_name_provided
+    loop_instance = McptaskRunner::WorkLoop.new
+    loop_instance.define_singleton_method(:current_git_branch) { 'main' }
+
+    result = { 'status' => 'urgent_bug_pending', 'bug_task_id' => 7777 }
+    loop_instance.send(:switch_to_main_if_urgent_bug, result)
+
+    assert_equal '7777', File.read(pin_path).strip
+  end
+
+  def test_read_urgent_pin_parses_id_from_json_format
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, JSON.generate({ id: '4242', name: 'Fix: Something' }))
+
+    loop_instance = McptaskRunner::WorkLoop.new
+    assert_equal 4242, loop_instance.instance_variable_get(:@task_id)
+  end
+
+  def test_read_urgent_pin_name_from_json_pin
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, JSON.generate({ id: '4242', name: 'Fix: Padající testy - bar' }))
+
+    loop_instance = McptaskRunner::WorkLoop.new
+    assert_equal 'Fix: Padající testy - bar', loop_instance.send(:read_urgent_pin_name)
+  end
+
+  def test_read_urgent_pin_name_returns_nil_for_plain_text_pin
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, '4242')
+
+    loop_instance = McptaskRunner::WorkLoop.new
+    assert_nil loop_instance.send(:read_urgent_pin_name)
+  end
+
+  def test_execute_pinned_urgent_bug_passes_task_name_to_builder
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, JSON.generate({ id: '9999', name: 'Fix: Padající testy - baz' }))
+
+    received_task_name = nil
+    builder = McptaskRunner::SnapshotBuilder.new(session_id: 'test', machine_id: 'test')
+    builder.define_singleton_method(:set_task) do |task_id:, task_name: nil|
+      received_task_name = task_name
+    end
+
+    task_executor = Object.new
+    task_executor.define_singleton_method(:run) do
+      { 'status' => 'success', 'task_id' => 9999, 'hours' => { 'per_day' => 8, 'task_estimated' => 1 } }
+    end
+
+    McptaskRunner::ClaudeCode::TaskAutoSquash.stub(:new, task_executor) do
+      McptaskRunner::Decider.stub(:new, Object.new.tap { |d| d.define_singleton_method(:should_stop?) { true } }) do
+        Kernel.stub(:sleep, nil) do
+          loop_instance = McptaskRunner::WorkLoop.new
+          loop_instance.instance_variable_set(:@builder, builder)
+          loop_instance.send(:execute_pinned_urgent_bug, 9999, McptaskRunner::ClaudeCode::TodayAutoSquash)
+
+          assert_equal 'Fix: Padající testy - baz', received_task_name,
+                       'builder must receive task_name from pin file so the web card shows the bug name'
+        end
+      end
+    end
+  end
+
+  def test_execute_pinned_urgent_bug_passes_nil_name_for_plain_text_pin
+    FileUtils.mkdir_p(File.dirname(pin_path))
+    File.write(pin_path, '9999')
+
+    received_task_name = :not_set
+    builder = McptaskRunner::SnapshotBuilder.new(session_id: 'test', machine_id: 'test')
+    builder.define_singleton_method(:set_task) do |task_id:, task_name: nil|
+      received_task_name = task_name
+    end
+
+    task_executor = Object.new
+    task_executor.define_singleton_method(:run) do
+      { 'status' => 'success', 'task_id' => 9999, 'hours' => { 'per_day' => 8, 'task_estimated' => 1 } }
+    end
+
+    McptaskRunner::ClaudeCode::TaskAutoSquash.stub(:new, task_executor) do
+      McptaskRunner::Decider.stub(:new, Object.new.tap { |d| d.define_singleton_method(:should_stop?) { true } }) do
+        Kernel.stub(:sleep, nil) do
+          loop_instance = McptaskRunner::WorkLoop.new
+          loop_instance.instance_variable_set(:@builder, builder)
+          loop_instance.send(:execute_pinned_urgent_bug, 9999, McptaskRunner::ClaudeCode::TodayAutoSquash)
+
+          assert_nil received_task_name, 'backward compat: plain-text pin yields nil task_name'
+        end
+      end
+    end
+  end
 end
