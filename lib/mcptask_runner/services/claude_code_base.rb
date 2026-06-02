@@ -132,6 +132,8 @@ module McptaskRunner
       @resuming = resuming
       @retry_state = Concerns::RetryHandling::RetryState.initial
       @quota_watch = nil
+      @last_quota_poll_at = 0.0
+      @quota_rest_failures = 0
       @state = ExecutionState.fresh
       @log_tag = self.class.name.split('::').last
       @snapshot_builder = snapshot_builder || SnapshotBuilder.new(
@@ -259,15 +261,8 @@ module McptaskRunner
     def reset_streaming_state
       @state = ExecutionState.fresh
       @stall_detector = StallDetector.new(@log_tag)
-    end
-
-    def quota_exceeded_now?(execution_start, now)
-      watch = @quota_watch or return false
-
-      per_day = watch[:per_day_hours].to_f
-      return false unless per_day.positive?
-
-      watch[:already_worked_hours].to_f + ((now - execution_start) / 3600.0) >= per_day
+      @last_quota_poll_at = 0.0
+      @quota_rest_failures = 0
     end
 
     def raise_streaming_errors_if_any(stream_error)

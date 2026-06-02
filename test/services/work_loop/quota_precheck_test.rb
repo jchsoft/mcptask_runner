@@ -3,216 +3,91 @@
 require 'test_helper'
 require_relative 'triage_test_helper'
 
+# The pre-run quota gate is now pure Ruby + REST (QuotaGuard.exceeded?), independent of
+# anything the triage agent reports. Triage's job is model + task selection only.
 class WorkLoopQuotaPrecheckTest < Minitest::Test
   include TriageTestHelper
+  include QuotaTestHelper
 
-  def quota_exceeded_triage_mock(task_id: 123)
+  def success_triage_mock(task_id: 123)
     mock = Object.new
     mock.define_singleton_method(:run) do
-      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => task_id,
-        'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 22.3, 'task_estimated' => 2 } }
+      { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => task_id, 'resuming' => false }
     end
     mock
   end
 
-  def test_triage_and_execute_skips_execution_when_quota_exceeded
-    executor_called = false
-    executor_mock = Object.new
-    executor_mock.define_singleton_method(:run) do
-      executor_called = true
+  def capturing_executor
+    executor = Object.new
+    runs = []
+    executor.define_singleton_method(:run) do
+      runs << true
       { 'status' => 'success' }
     end
+    executor.define_singleton_method(:run_count) { runs.length }
+    executor
+  end
 
-    McptaskRunner::ClaudeCode::Triage.stub(:new, quota_exceeded_triage_mock) do
-      McptaskRunner::ClaudeCode::Honest.stub(:new, executor_mock) do
-        loop_instance = McptaskRunner::WorkLoop.new
-        result = loop_instance.execute(:once)
-
-        assert_equal 'quota_exceeded', result['status']
-        refute executor_called, 'Executor should not be called when quota is already exceeded'
+  def test_skips_execution_when_rest_quota_exceeded
+    executor = capturing_executor
+    stub_quota(worked: 9.0, per_day: 8.0) do
+      McptaskRunner::ClaudeCode::Triage.stub(:new, success_triage_mock) do
+        McptaskRunner::ClaudeCode::Honest.stub(:new, executor) do
+          result = McptaskRunner::WorkLoop.new.execute(:once)
+          assert_equal 'quota_exceeded', result['status']
+          assert_equal 0, executor.run_count, 'executor must not run when REST quota already exceeded'
+        end
       end
     end
   end
 
-  def test_triage_and_execute_proceeds_when_ignore_quota
-    executor_mock = Object.new
-    def executor_mock.run
-      { 'status' => 'success', 'hours' => { 'per_day' => 8, 'task_estimated' => 2 } }
-    end
-
-    McptaskRunner::ClaudeCode::Triage.stub(:new, quota_exceeded_triage_mock) do
-      McptaskRunner::ClaudeCode::Honest.stub(:new, executor_mock) do
-        loop_instance = McptaskRunner::WorkLoop.new(ignore_quota: true)
-        result = loop_instance.execute(:once)
-
-        assert_equal 'success', result['status']
+  def test_fail_closed_skips_execution_when_rest_unavailable
+    executor = capturing_executor
+    stub_quota(rest_ok: false) do
+      McptaskRunner::ClaudeCode::Triage.stub(:new, success_triage_mock) do
+        McptaskRunner::ClaudeCode::Honest.stub(:new, executor) do
+          result = McptaskRunner::WorkLoop.new.execute(:once)
+          assert_equal 'quota_exceeded', result['status']
+          assert_equal 0, executor.run_count, 'REST failure fails closed — no execution'
+        end
       end
     end
   end
 
-  def triage_status_quota_exceeded_mock
-    mock = Object.new
-    mock.define_singleton_method(:run) do
-      { 'status' => 'quota_exceeded', 'recommended_model' => 'genius', 'task_id' => 0,
-        'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 9, 'task_estimated' => 0 } }
-    end
-    mock
-  end
-
-  def test_triage_status_quota_exceeded_short_circuits_without_ignore_quota
-    McptaskRunner::ClaudeCode::Triage.stub(:new, triage_status_quota_exceeded_mock) do
-      result = McptaskRunner::WorkLoop.new.execute(:once)
-      assert_equal 'quota_exceeded', result['status']
-    end
-  end
-
-  def test_triage_status_quota_exceeded_bypassed_when_ignore_quota
-    executor_mock = Object.new
-    executor_called = false
-    executor_mock.define_singleton_method(:run) do
-      executor_called = true
-      { 'status' => 'success', 'hours' => { 'per_day' => 8, 'task_estimated' => 2 } }
-    end
-
-    triage = Object.new
-    triage.define_singleton_method(:run) do
-      { 'status' => 'quota_exceeded', 'recommended_model' => 'genius', 'task_id' => 555,
-        'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 9, 'task_estimated' => 0 } }
-    end
-
-    McptaskRunner::ClaudeCode::Triage.stub(:new, triage) do
-      McptaskRunner::ClaudeCode::Honest.stub(:new, executor_mock) do
-        result = McptaskRunner::WorkLoop.new(ignore_quota: true).execute(:once)
-        assert_equal 'success', result['status']
-        assert executor_called, 'Executor must run when ignore_quota=true even if triage flagged quota_exceeded'
+  def test_proceeds_when_ignore_quota_even_if_rest_exceeded
+    executor = capturing_executor
+    stub_quota(worked: 9.0, per_day: 8.0) do
+      McptaskRunner::ClaudeCode::Triage.stub(:new, success_triage_mock) do
+        McptaskRunner::ClaudeCode::Honest.stub(:new, executor) do
+          result = McptaskRunner::WorkLoop.new(ignore_quota: true).execute(:once)
+          assert_equal 'success', result['status']
+          assert_equal 1, executor.run_count
+        end
       end
     end
   end
 
-  def test_bogus_quota_exceeded_status_ignored_when_hours_under_quota
-    # Regression: triage child glitched (e.g. SessionStart hook pollution) and emitted
-    # status="quota_exceeded" while its own hours block (2.2 < 8) shows quota NOT reached.
-    # The hours math is authoritative — the runner must ignore the bogus verdict and execute.
-    executor_called = false
-    executor_mock = Object.new
-    executor_mock.define_singleton_method(:run) do
-      executor_called = true
-      { 'status' => 'success', 'hours' => { 'per_day' => 8, 'task_estimated' => 1 } }
-    end
-
-    triage = Object.new
-    triage.define_singleton_method(:run) do
-      { 'status' => 'quota_exceeded', 'recommended_model' => 'genius', 'task_id' => 777,
-        'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 2.2, 'task_estimated' => 0 } }
-    end
-
-    McptaskRunner::ClaudeCode::Triage.stub(:new, triage) do
-      McptaskRunner::ClaudeCode::Honest.stub(:new, executor_mock) do
+  def test_proceeds_when_under_quota
+    executor = capturing_executor
+    # default under-quota verdict from test_helper
+    with_triage_stub do
+      McptaskRunner::ClaudeCode::Honest.stub(:new, executor) do
         result = McptaskRunner::WorkLoop.new.execute(:once)
         assert_equal 'success', result['status']
-        assert executor_called, 'Executor must run when hours show quota is not exceeded, despite bogus status'
       end
     end
   end
 
-  def test_quota_exceeded_status_honored_when_no_hours_block
-    # No hours block to verify against → fall back to trusting the status string.
-    triage = Object.new
-    triage.define_singleton_method(:run) do
-      { 'status' => 'quota_exceeded', 'recommended_model' => 'genius', 'task_id' => 0, 'resuming' => false }
-    end
-
-    McptaskRunner::ClaudeCode::Triage.stub(:new, triage) do
-      result = McptaskRunner::WorkLoop.new.execute(:once)
-      assert_equal 'quota_exceeded', result['status']
-    end
-  end
-
-  def test_triage_and_execute_proceeds_when_quota_not_exceeded
-    executor_mock = Object.new
-    def executor_mock.run
-      { 'status' => 'success', 'hours' => { 'per_day' => 8, 'task_estimated' => 2 } }
-    end
-
-    with_triage_stub do
-      McptaskRunner::ClaudeCode::Honest.stub(:new, executor_mock) do
-        loop_instance = McptaskRunner::WorkLoop.new
-        result = loop_instance.execute(:once)
-
-        assert_equal 'success', result['status']
-      end
-    end
-  end
-
-  def test_triage_quota_exceeded_returns_false_when_no_hours
-    loop_instance = McptaskRunner::WorkLoop.new
-    result = loop_instance.send(:triage_quota_exceeded?, { 'status' => 'success' })
-    refute result
-  end
-
-  def test_triage_quota_exceeded_returns_true_when_already_worked_exceeds_per_day
-    loop_instance = McptaskRunner::WorkLoop.new
-    result = loop_instance.send(:triage_quota_exceeded?,
-                                { 'hours' => { 'per_day' => 8, 'already_worked' => 10 } })
-    assert result
-  end
-
-  def test_triage_quota_exceeded_returns_true_when_exactly_equal
-    loop_instance = McptaskRunner::WorkLoop.new
-    result = loop_instance.send(:triage_quota_exceeded?,
-                                { 'hours' => { 'per_day' => 8, 'already_worked' => 8 } })
-    assert result
-  end
-
-  def test_triage_quota_exceeded_returns_false_when_under_quota
-    loop_instance = McptaskRunner::WorkLoop.new
-    result = loop_instance.send(:triage_quota_exceeded?,
-                                { 'hours' => { 'per_day' => 8, 'already_worked' => 5 } })
-    refute result
-  end
-
-  def test_triage_quota_exceeded_returns_true_when_per_day_is_zero_holiday
-    loop_instance = McptaskRunner::WorkLoop.new
-    result = loop_instance.send(:triage_quota_exceeded?,
-                                { 'hours' => { 'per_day' => 0, 'already_worked' => 0 } })
-    assert result, 'per_day=0 means no work today (holiday); must report quota exceeded'
-  end
-
-  def test_triage_quota_exceeded_returns_false_when_per_day_is_nil_api_failure
-    loop_instance = McptaskRunner::WorkLoop.new
-    result = loop_instance.send(:triage_quota_exceeded?,
-                                { 'hours' => { 'per_day' => nil, 'already_worked' => 0 } })
-    refute result, 'per_day=nil means API read failed; skip check, do not crash daemon'
-  end
-
-  def test_queue_auto_squash_breaks_on_quota_exceeded
-    call_count = [0]
-    triage = Object.new
-    triage.define_singleton_method(:run) do
-      call_count[0] += 1
-      if call_count[0] == 1
-        { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 123,
-          'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 0, 'task_estimated' => 2 } }
-      else
-        { 'status' => 'success', 'recommended_model' => 'genius', 'task_id' => 456,
-          'resuming' => false, 'hours' => { 'per_day' => 8, 'already_worked' => 22.3, 'task_estimated' => 2 } }
-      end
-    end
-
-    executor_mock = Object.new
-    def executor_mock.run
-      { 'status' => 'success', 'hours' => { 'per_day' => 8, 'task_estimated' => 2 } }
-    end
-
-    McptaskRunner::ClaudeCode::Triage.stub(:new, triage) do
-      McptaskRunner::ClaudeCode::QueueAutoSquash.stub(:new, executor_mock) do
-        Kernel.stub(:sleep, nil) do
-          loop_instance = McptaskRunner::WorkLoop.new
-          results = loop_instance.execute(:queue_auto_squash)
-
-          assert_equal 2, results.length
-          assert_equal 'success', results.first['status']
-          assert_equal 'quota_exceeded', results.last['status']
+  def test_queue_auto_squash_stops_when_quota_exceeded
+    executor = capturing_executor
+    stub_quota(worked: 9.0, per_day: 8.0) do
+      McptaskRunner::ClaudeCode::Triage.stub(:new, success_triage_mock) do
+        McptaskRunner::ClaudeCode::QueueAutoSquash.stub(:new, executor) do
+          Kernel.stub(:sleep, nil) do
+            results = McptaskRunner::WorkLoop.new.execute(:queue_auto_squash)
+            assert_equal 'quota_exceeded', results.last['status']
+            assert_equal 0, executor.run_count
+          end
         end
       end
     end

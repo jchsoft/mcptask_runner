@@ -1,28 +1,22 @@
 # frozen_string_literal: true
 
 module McptaskRunner
+  # Between-task stop decision. Daily quota comes straight from QuotaGuard (REST,
+  # no AI self-report); the task-result statuses are the runner's own signal.
   class Decider
     def initialize(task_results: [])
       Logger.debug("[Decider] [initialize] Initializing with #{task_results.length} task results")
       @task_results = task_results.is_a?(Hash) ? [task_results] : task_results
-      Logger.debug("[Decider] [initialize] Normalized to array of #{@task_results.length} results")
     end
 
     def should_continue?
-      result = !should_stop?
-      Logger.debug("[Decider] [should_continue?] Result: #{result}")
-      result
+      !should_stop?
     end
 
     def should_stop?
-      Logger.debug('[Decider] [should_stop?] Checking stop conditions...')
-      has_failures = tasks_failed?
-      mid_task_quota = quota_exceeded_mid_task?
-      return true if has_failures || mid_task_quota
+      return true if tasks_failed? || quota_exceeded_mid_task?
 
-      quota_exceeded = daily_quota_exceeded?
-      Logger.debug("[Decider] [should_stop?] Tasks failed: #{has_failures}, mid-task quota: #{mid_task_quota}, quota exceeded: #{quota_exceeded}")
-      quota_exceeded
+      daily_quota_exceeded?
     end
 
     def quota_exceeded_mid_task?
@@ -31,117 +25,36 @@ module McptaskRunner
       hit
     end
 
-    def remaining_hours
-      Logger.debug('[Decider] [remaining_hours] Calculating remaining hours...')
-
-      if @task_results.empty?
-        Logger.debug('[Decider] [remaining_hours] No task results, returning 0')
-        return 0
-      end
-
-      if (truth = server_truth)
-        remaining = (truth[:per_day] - truth[:worked_today]).round(2)
-        Logger.debug("[Decider] [remaining_hours] (server) per_day: #{truth[:per_day]}h, worked_today: #{truth[:worked_today]}h, Remaining: #{remaining}h")
-        return remaining
-      end
-
-      daily_goal = daily_hour_goal
-      already_worked = already_worked_before_session
-      total_estimated = total_hours_estimated # fallback: REST unavailable, use snapshot + estimates
-      remaining = (daily_goal - already_worked - total_estimated).round(2)
-
-      Logger.debug("[Decider] [remaining_hours] (fallback) Daily goal: #{daily_goal}h, Already worked: #{already_worked}h, Total estimated: #{total_estimated}h, Remaining: #{remaining}h")
-      remaining
-    end
-
     def summary
-      Logger.debug('[Decider] [summary] Building summary...')
-      summary_data = {
-        should_continue: should_continue?,
-        remaining_hours: remaining_hours,
+      status = QuotaGuard.status
+      {
+        should_continue: !(tasks_failed? || quota_exceeded_mid_task? || status.exceeded),
+        remaining_hours: status.rest_ok ? (status.per_day - status.worked_today).round(2) : nil,
         tasks_completed: tasks_completed,
         tasks_failed: tasks_failed?,
-        daily_limit: daily_hour_goal,
-        total_worked: total_hours_worked
+        daily_limit: status.per_day,
+        total_worked: status.worked_today
       }
-      Logger.debug("[Decider] [summary] Summary: #{summary_data.inspect}")
-      summary_data
     end
 
     private
 
-    # Authoritative quota from mcptask.online time_status endpoint.
-    # Memoized per-instance: should_stop? and summary share one HTTP call.
-    # Returns nil on any failure so callers fall back to estimate-based math.
-    def server_truth
-      return @server_truth if defined?(@server_truth)
+    # No task results yet (loop hasn't completed a task) → nothing to stop for.
+    # Once work exists, the live REST quota is authoritative.
+    def daily_quota_exceeded?
+      return false if @task_results.empty?
 
-      @server_truth = TimeStatusClient.fetch
-      Logger.debug("[Decider] [server_truth] worked_today=#{@server_truth[:worked_today]}h per_day=#{@server_truth[:per_day]}h")
-      @server_truth
-    rescue TimeStatusClient::Error => e
-      Logger.warn("[Decider] TimeStatusClient failed (#{e.message}); falling back to estimate-based math")
-      @server_truth = nil
+      QuotaGuard.exceeded?
     end
 
     def tasks_failed?
       failed_count = @task_results.count { |r| r['status'] == 'error' }
-      has_failures = failed_count.positive?
-      Logger.debug("[Decider] [tasks_failed?] Total results: #{@task_results.length}, Failed: #{failed_count}, has_failures: #{has_failures}")
-      has_failures
-    end
-
-    def daily_quota_exceeded?
-      Logger.debug('[Decider] [daily_quota_exceeded?] Checking daily quota...')
-      return false if @task_results.empty?
-
-      remaining = remaining_hours
-      exceeded = remaining <= 0
-      Logger.debug("[Decider] [daily_quota_exceeded?] Remaining hours: #{remaining}, quota exceeded: #{exceeded}")
-      exceeded
-    end
-
-    def daily_hour_goal
-      Logger.debug('[Decider] [daily_hour_goal] Calculating daily hour goal...')
-      return 0 if @task_results.empty?
-
-      raw = @task_results.first.dig('hours', 'per_day')
-      if raw.nil?
-        Logger.warn('[Decider] per_day=nil in triage result; mcptask://user read failed, treating as 24h fallback')
-        return 24.0
-      end
-
-      goal = raw.to_f
-      Logger.debug("[Decider] [daily_hour_goal] Daily hour goal: #{goal}h")
-      goal
-    end
-
-    def total_hours_worked
-      Logger.debug("[Decider] [total_hours_worked] Summing hours from #{@task_results.length} tasks...")
-      total = @task_results.sum { |r| r.dig('hours', 'task_worked').to_f }
-      Logger.debug("[Decider] [total_hours_worked] Total hours worked: #{total}h")
-      total
-    end
-
-    def total_hours_estimated
-      Logger.debug("[Decider] [total_hours_estimated] Summing hours from #{@task_results.length} tasks...")
-      total = @task_results.sum { |r| r.dig('hours', 'task_estimated').to_f }
-      Logger.debug("[Decider] [total_hours_estimated] Total hours estimated: #{total}h")
-      total
-    end
-
-    def already_worked_before_session
-      # Use only from the first task result — represents hours worked
-      # before this mcptask_runner session started
-      already = @task_results.first.dig('hours', 'already_worked').to_f
-      Logger.debug("[Decider] [already_worked_before_session] Already worked before session: #{already}h")
-      already
+      Logger.debug("[Decider] [tasks_failed?] Total: #{@task_results.length}, failed: #{failed_count}")
+      failed_count.positive?
     end
 
     def tasks_completed
-      completed_count = @task_results.count { |r| r['status'] == 'success' }
-      Logger.debug("[Decider] [tasks_completed] Tasks completed: #{completed_count} out of #{@task_results.length}")
-      completed_count
+      @task_results.count { |r| r['status'] == 'success' }
     end
   end
 end

@@ -62,11 +62,12 @@ module McptaskRunner
           MANUAL workflow — PR created, NOT merged. Human reviews.
 
           #{result_format_instruction(
-            %("status": "success", "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}, "task_id": #{@task_id})
+            %("status": "success", "task_id": #{@task_id})
           )}
 
-          #{hours_data_instruction}
-          3. Set status:
+          #{progress_logging_instruction}
+
+          Set status:
              - "success" if task completed successfully (PR created, NOT merged)
              #{urgent_bug_pending_status_option}
              - "failure" for other errors

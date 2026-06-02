@@ -8,8 +8,7 @@ module McptaskRunner
       module Prompt
         # Triage prompt when story_id is given — picks first incomplete subtask, no branch detection.
         class Story < Base
-          def initialize(story_id:, ignore_quota:)
-            super(ignore_quota: ignore_quota)
+          def initialize(story_id:)
             @story_id = story_id
           end
 
@@ -17,8 +16,6 @@ module McptaskRunner
             <<~INSTRUCTIONS
               Task triage agent. Find next incomplete subtask from Story, recommend model.
               OUTPUT ONLY JSON. No explanations, no commentary.
-
-              #{daily_quota_check_step}
 
               STEP 1 - LOAD STORY:
               1. INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{@story_id}" — DIRECT MCP. Do NOT use /mcptask-read skill.
@@ -35,17 +32,16 @@ module McptaskRunner
               #{model_selection_rules}
 
               #{result_format_instruction(
-                '"status": "success", "recommended_model": "smart", "task_id": 123, "task_name": "Subtask title", "resuming": false, "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}',
+                '"status": "success", "recommended_model": "smart", "task_id": 123, "task_name": "Subtask title", "resuming": false',
                 extra_rules: [
                   'recommended_model: "genius"/"smart"/"primitive" (lowercase)',
                   'task_id = subtask relative_id (NOT story)',
                   'task_name = subtask title; empty string if missing',
-                  'resuming = false (story triage = fresh tasks)',
-                  'already_worked = exact "worked_out" from mcptask://user — never 0 unless API returned 0'
+                  'resuming = false (story triage = fresh tasks)'
                 ]
               )}
 
-              #{triage_hours_instruction(entity: 'subtask', status_entries: status_entries)}
+              #{triage_status_instruction(status_entries: status_entries)}
             INSTRUCTIONS
           end
 
@@ -53,8 +49,7 @@ module McptaskRunner
 
           def status_entries
             "- \"success\" if subtask analyzed successfully\n" \
-              "- \"no_more_tasks\" if no incomplete subtasks in the Story\n" \
-              '- "quota_exceeded" if worked_out >= hour_goal (from STEP 0)'
+              '- "no_more_tasks" if no incomplete subtasks in the Story'
           end
         end
       end

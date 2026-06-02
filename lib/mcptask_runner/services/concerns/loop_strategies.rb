@@ -190,7 +190,7 @@ module McptaskRunner
           break if %w[quota_exceeded quota_exceeded_mid_task urgent_bug_pending_dirty_branch].include?(result['status'])
 
           if no_tasks_available?(result)
-            break if !@ignore_quota && triage_quota_exceeded?(result)
+            break if !@ignore_quota && QuotaGuard.exceeded?
 
             Logger.info_stdout('[WorkLoop] No tasks available, will wait 1 hour before retry...')
             break unless handle_no_tasks_in_daily_mode
@@ -206,7 +206,7 @@ module McptaskRunner
         results
       end
 
-      def run_story_loop(story_id, original_executor_class, model_override: nil, first_task_id: nil, triage_result: nil)
+      def run_story_loop(story_id, original_executor_class, model_override: nil, first_task_id: nil)
         story_executor = story_executor_for(original_executor_class)
         Logger.info_stdout("[WorkLoop] Story loop: using #{story_executor.name} (mapped from #{original_executor_class.name})")
         results = []
@@ -218,7 +218,7 @@ module McptaskRunner
           result = if iteration_count == 1 && first_task_id
             executor = story_executor.new(story_id: story_id, task_id: first_task_id, verbose: @verbose,
                                           model_override: model_override, snapshot_builder: @builder)
-            run_with_quota_guard(executor, triage_result, first_task_id)
+            run_with_quota_guard(executor, first_task_id)
           else
             triage_and_execute(story_executor, story_id: story_id, skip_story_load: true)
           end
@@ -273,7 +273,7 @@ module McptaskRunner
           Logger.info_stdout("[WorkLoop] #{label} ##{iteration_count} completed with status: #{status}")
 
           if status == 'no_more_tasks' && handle_no_tasks
-            break if !@ignore_quota && triage_quota_exceeded?(result)
+            break if !@ignore_quota && QuotaGuard.exceeded?
             break unless handle_no_tasks_in_today_auto_squash_mode
 
             next

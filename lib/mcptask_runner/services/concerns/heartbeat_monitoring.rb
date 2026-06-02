@@ -20,6 +20,9 @@ module McptaskRunner
       # for a Skill / forked execution) would trigger SIGTERM even while Claude is clearly alive,
       # firing new tools. Stream advancing = Claude responsive = no kill.
       STREAM_QUIET_KILL_THRESHOLD = 180 # 3 minutes
+      # interval: live REST quota re-check cadence during a task (~6 min).
+      # failure_kill_streak: consecutive REST failures before fail-closed mid-task kill (~18 min outage).
+      QUOTA_POLL = { interval: 360, failure_kill_streak: 3 }.freeze
       # Per-tool ceilings (seconds). :warn → status=:pending (soft warn).
       # :kill → status=:error + SIGTERM. Quick = MCP/Read/Edit/Grep. Long = Bash/Task.
       TOOL_HANG_TIMEOUTS = { quick: { warn: 120, kill: 300 }, long: { warn: 600, kill: 1500 } }.freeze
@@ -54,7 +57,7 @@ module McptaskRunner
 
           recover_from_soft_warn_if_resumed(stream_advanced)
           emit_heartbeat(current_count, inactive_seconds, now)
-          break if heartbeat_quota_terminate(execution_start, now)
+          break if heartbeat_quota_terminate(now)
           break if terminate_for_inactivity_if_idle(current_count, inactive_seconds, stderr_content)
           break if terminate_for_hung_tool_if_dead(now, stderr_content, stream_quiet_seconds)
 
@@ -127,19 +130,40 @@ module McptaskRunner
         release_test_lock
       end
 
-      def heartbeat_quota_terminate(execution_start, now)
-        return false unless quota_exceeded_now?(execution_start, now)
+      def heartbeat_quota_terminate(now)
+        return false unless quota_exceeded_now?(now)
 
-        watch = @quota_watch
-        elapsed_h = ((now - execution_start) / 3600.0).round(2)
-        Logger.error "[#{@log_tag}] Daily quota exceeded mid-task " \
-                     "(per_day=#{watch[:per_day_hours]}h, already_worked=#{watch[:already_worked_hours]}h, " \
-                     "this_run=#{elapsed_h}h), terminating..."
+        Logger.error "[#{@log_tag}] Daily quota exceeded mid-task (live REST) — terminating subprocess"
         @state.stopping = true
         @state.quota_exceeded = true
         kill_process(@state.child_pid)
         release_test_lock
         true
+      end
+
+      # Mid-task quota check, throttled to one live REST poll per QUOTA_POLL_INTERVAL.
+      # Authoritative worked_today comes straight from mcptask.online — never from the
+      # agent — so a child that under-reports its own hours can't dodge the cap.
+      # Fail-closed on REST errors, but only after QUOTA_FAILURE_KILL_STREAK consecutive
+      # misses so a single transient blip doesn't nuke healthy in-flight work.
+      def quota_exceeded_now?(now)
+        return false unless @quota_watch
+        return false if (now - @last_quota_poll_at) < QUOTA_POLL[:interval]
+
+        @last_quota_poll_at = now
+        status = QuotaGuard.status
+        @snapshot_builder.set_quota(per_day_hours: status.per_day, already_worked_hours: status.worked_today) if status.rest_ok
+        reached_quota_kill?(status)
+      end
+
+      def reached_quota_kill?(status)
+        if status.rest_ok
+          @quota_rest_failures = 0
+          return status.exceeded
+        end
+
+        @quota_rest_failures += 1
+        @quota_rest_failures >= QUOTA_POLL[:failure_kill_streak]
       end
 
       def hung_tool(now)

@@ -14,8 +14,6 @@ module McptaskRunner
               Task triage agent. Analyze task, recommend model.
               OUTPUT ONLY JSON. No explanations, no commentary.
 
-              #{daily_quota_check_step}
-
               #{branch_detection_step}
 
               STEP 2 - FETCH: INVOKE ReadMcpResourceTool with server="mcptask-online", uri="#{task_fetch_url}" — DIRECT MCP. Do NOT use /mcptask-read skill.#{fetch_step_suffix}
@@ -37,19 +35,18 @@ module McptaskRunner
               #{model_selection_rules}
 
               #{result_format_instruction(
-                '"status": "success", "recommended_model": "smart", "task_id": 123, "task_name": "Piece title", "resuming": false, "piece_type": "Task", "story_id": null, "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}',
+                '"status": "success", "recommended_model": "smart", "task_id": 123, "task_name": "Piece title", "resuming": false, "piece_type": "Task", "story_id": null',
                 extra_rules: [
                   'recommended_model: "genius"/"smart"/"primitive" (lowercase)',
                   'task_id = relative_id of task (or subtask if Story)',
                   'task_name = piece title (or subtask title if Story); empty string if missing',
                   'resuming: boolean (not string)',
                   'piece_type: "Task" or "Story" (Story only if STEP 2b)',
-                  'story_id: Story relative_id if piece_type="Story", else null',
-                  'already_worked = exact "worked_out" — never 0 unless API returned 0'
+                  'story_id: Story relative_id if piece_type="Story", else null'
                 ]
               )}
 
-              #{triage_hours_instruction(entity: 'task', status_entries: status_entries)}
+              #{triage_status_instruction(status_entries: status_entries)}
             INSTRUCTIONS
           end
 
@@ -65,8 +62,7 @@ module McptaskRunner
 
           def status_entries
             "- \"success\" if task analyzed successfully\n" \
-              "- \"no_more_tasks\" if no tasks available\n" \
-              '- "quota_exceeded" if worked_out >= hour_goal (from STEP 0)'
+              '- "no_more_tasks" if no tasks available'
           end
         end
       end

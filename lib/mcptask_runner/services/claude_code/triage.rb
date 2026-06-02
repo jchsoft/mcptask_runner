@@ -12,11 +12,10 @@ module McptaskRunner
     # Prompt building delegated to Triage::Prompt::* — one class per input shape, no
     # `if @story_id` / `if @task_id` branches inside any single prompt.
     class Triage < ClaudeCodeBase
-      def initialize(verbose: false, task_id: nil, story_id: nil, ignore_quota: false, snapshot_builder: nil)
+      def initialize(verbose: false, task_id: nil, story_id: nil, snapshot_builder: nil)
         super(verbose: verbose, snapshot_builder: snapshot_builder)
         @task_id = task_id
         @story_id = story_id
-        @ignore_quota = ignore_quota
       end
 
       def model_name = 'smart'
@@ -34,11 +33,11 @@ module McptaskRunner
 
       def prompt_builder
         if @story_id
-          Prompt::Story.new(story_id: @story_id, ignore_quota: @ignore_quota)
+          Prompt::Story.new(story_id: @story_id)
         elsif @task_id
-          Prompt::TaskPinned.new(task_id: @task_id, ignore_quota: @ignore_quota)
+          Prompt::TaskPinned.new(task_id: @task_id)
         else
-          Prompt::TaskDiscovery.new(project_id: project_relative_id, ignore_quota: @ignore_quota)
+          Prompt::TaskDiscovery.new(project_id: project_relative_id)
         end
       end
     end

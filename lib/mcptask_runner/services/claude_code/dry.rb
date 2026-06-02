@@ -35,19 +35,13 @@ module McptaskRunner
              END_TASK_INFO
           3-5. NO branch, NO code changes, NO PR
 
-          [DEBUG] duration_best: '<original_value>' -> task_estimated: Y
-
           #{result_format_instruction(
-            '"status": "success", "piece_type": "Task", "story_id": null, "task_info": {"name": "...", "id": 123, "description": "...", "status": "...", "priority": "...", "assigned_user": "...", "scrum_points": "..."}, "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}'
+            '"status": "success", "piece_type": "Task", "story_id": null, "task_info": {"name": "...", "id": 123, "description": "...", "status": "...", "priority": "...", "assigned_user": "...", "scrum_points": "..."}'
           )}
 
           Data:
-          1. mcptask://user (server="mcptask-online", LITERAL URI — no account suffix) → "hour_goal"=per_day, "worked_out"=already_worked
-             Read BEFORE logging work. WARNING: already_worked = daily "worked_out", NOT from effort history!
-          2. From task: name, relative_id (as id), description, task_state (as status), priority, assigned_user, scrum_point (as scrum_points)
-          3. task_estimated from "duration_best": hodina/hours→hours, den/day→×8, tyden/week→×40
-             Range (e.g. "3.0 - 7.0 hodin") → use smallest (3.0)
-          4. status: "success" if loaded
+          1. From task: name, relative_id (as id), description, task_state (as status), priority, assigned_user, scrum_point (as scrum_points)
+          2. status: "success" if loaded
         INSTRUCTIONS
       end
     end

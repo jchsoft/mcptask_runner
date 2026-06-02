@@ -29,8 +29,7 @@ class InstallerTest < Minitest::Test
   def build(opts = {})
     Klass.new(
       target_dir:       @target_dir,
-      launch_agents_dir: @launch_agents,
-      log_base_dir:     @log_base_dir,
+      dirs:             { launch_agents: @launch_agents, log_base: @log_base_dir },
       mode:             'mcptask_runner:auto:squash:today',
       platform:         'darwin19.0.0',
       **opts
@@ -92,8 +91,8 @@ class InstallerTest < Minitest::Test
     dir = File.join(@tmpdir, 'my_project_ii')
     FileUtils.mkdir_p(dir)
     inst = Klass.new(
-      target_dir: dir, launch_agents_dir: @launch_agents,
-      log_base_dir: @log_base_dir, mode: 'mcptask_runner:manual:today', platform: 'darwin'
+      target_dir: dir, dirs: { launch_agents: @launch_agents, log_base: @log_base_dir },
+      mode: 'mcptask_runner:manual:today', platform: 'darwin'
     )
     capture_io { inst.call }
     plist = File.join(@launch_agents, 'com.karelmracek.mcptask-runner-my-project-ii.plist')

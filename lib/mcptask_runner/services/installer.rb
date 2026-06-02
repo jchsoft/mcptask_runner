@@ -26,14 +26,15 @@ module McptaskRunner
       '2' => 'mcptask_runner:manual:today'
     }.freeze
 
-    def initialize(target_dir: Dir.pwd, force: ENV['FORCE'] == '1', launch_agents_dir: nil,
-                   log_base_dir: nil, mode: nil, platform: RbConfig::CONFIG['host_os'])
-      @target_dir       = File.expand_path(target_dir)
-      @force            = force
-      @launch_agents_dir = launch_agents_dir || File.expand_path('~/Library/LaunchAgents')
-      @log_base_dir     = log_base_dir || File.expand_path('~/logs/mcptask_runner')
-      @mode             = mode
-      @platform         = platform
+    # dirs: optional override paths { launch_agents:, log_base: } — grouped so callers
+    # (and tests) pass install destinations as one argument.
+    def initialize(target_dir: Dir.pwd, force: ENV['FORCE'] == '1', dirs: {}, mode: nil, platform: RbConfig::CONFIG['host_os'])
+      @target_dir        = File.expand_path(target_dir)
+      @force             = force
+      @launch_agents_dir = dirs[:launch_agents] || File.expand_path('~/Library/LaunchAgents')
+      @log_base_dir      = dirs[:log_base] || File.expand_path('~/logs/mcptask_runner')
+      @mode              = mode
+      @platform          = platform
     end
 
     def self.call(**kwargs)

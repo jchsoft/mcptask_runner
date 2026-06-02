@@ -173,16 +173,15 @@ class ClaudeCodeDryTest < Minitest::Test
     end
   end
 
-  def test_instructions_dry_includes_duration_best_extraction
+  def test_instructions_dry_reports_task_info_without_quota
     File.stub :exist?, true do
       File.stub :read, "project_relative_id=77\naccount_code: `jchsoft`" do
         dry = McptaskRunner::ClaudeCode::Dry.new
         instructions = dry.send(:build_instructions)
-        assert_includes instructions, 'duration_best'
-        assert_includes instructions, 'hodina'
-        assert_includes instructions, 'den'
-        assert_includes instructions, 'DEBUG'
-        assert_includes instructions, 'task_estimated: Y'
+        assert_includes instructions, 'TASKRUNNER_TASK_INFO'
+        assert_includes instructions, 'task_info'
+        assert_includes instructions, 'NO branch, NO code changes, NO PR'
+        refute_includes instructions, 'worked_out'
       end
     end
   end
@@ -272,7 +271,7 @@ class ClaudeCodeReviewTest < Minitest::Test
     instructions = review.send(:build_instructions)
     assert_includes instructions, 'TASKRUNNER_RESULT'
     assert_includes instructions, 'status'
-    assert_includes instructions, 'hours'
+    assert_includes instructions, 'PROGRESS LOGGING'
   end
 
   def test_review_instructions_includes_status_values
@@ -372,7 +371,7 @@ class ClaudeCodeReviewsTest < Minitest::Test
     instructions = reviews.send(:build_instructions)
     assert_includes instructions, 'TASKRUNNER_RESULT'
     assert_includes instructions, 'status'
-    assert_includes instructions, 'hours'
+    assert_includes instructions, 'PROGRESS LOGGING'
   end
 
   def test_reviews_has_different_task_section_than_review
@@ -625,7 +624,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'TASKRUNNER_RESULT'
         assert_includes instructions, 'status'
-        assert_includes instructions, 'hours'
+        assert_includes instructions, 'PROGRESS LOGGING'
       end
     end
   end
@@ -898,7 +897,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
         instructions = queue_auto_squash.send(:build_instructions)
         assert_includes instructions, 'TASKRUNNER_RESULT'
         assert_includes instructions, 'status'
-        assert_includes instructions, 'hours'
+        assert_includes instructions, 'PROGRESS LOGGING'
       end
     end
   end
@@ -1054,7 +1053,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
         instructions = once_auto_squash.send(:build_instructions)
         assert_includes instructions, 'TASKRUNNER_RESULT'
         assert_includes instructions, 'status'
-        assert_includes instructions, 'hours'
+        assert_includes instructions, 'PROGRESS LOGGING'
       end
     end
   end

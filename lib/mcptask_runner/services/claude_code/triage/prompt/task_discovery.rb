@@ -9,8 +9,7 @@ module McptaskRunner
         # Triage prompt when neither task_id nor story_id is given.
         # Resolves task via branch/PR detection or falls through to @next.
         class TaskDiscovery < TaskBase
-          def initialize(project_id:, ignore_quota:)
-            super(ignore_quota: ignore_quota)
+          def initialize(project_id:)
             @project_id = project_id
             @task_id = nil
           end

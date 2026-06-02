@@ -62,11 +62,12 @@ module McptaskRunner
           ⚠️ TASK IS NOT COMPLETE UNTIL LOCAL CI PASSES (step 13)
 
           #{result_format_instruction(
-            '"status": "success", "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}'
+            '"status": "success"'
           )}
 
-          #{hours_data_instruction(include_warning: true)}
-          3. Set status:
+          #{progress_logging_instruction}
+
+          Set status:
              - "success" if task completed successfully
              - "no_more_tasks" if no tasks available (mcptask returns "No available tasks found")
              #{urgent_bug_pending_status_option}

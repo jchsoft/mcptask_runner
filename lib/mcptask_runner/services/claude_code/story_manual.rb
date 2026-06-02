@@ -64,12 +64,13 @@ module McptaskRunner
           MANUAL: PR created, NOT merged. Human reviews.
 
           #{result_format_instruction(
-            %("status": "success", "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}, "story_id": #{@story_id}, "task_id": Z)
+            %("status": "success", "story_id": #{@story_id}, "task_id": Z)
           )}
 
-          #{hours_data_instruction}
-          3. task_id: relative_id of the task you worked on
-          4. Set status:
+          #{progress_logging_instruction}
+
+          task_id: relative_id of the task you worked on
+          Set status:
              - "success" if task completed successfully (PR created, NOT merged)
              - "no_more_tasks" if no incomplete tasks in the Story
              #{urgent_bug_pending_status_option}

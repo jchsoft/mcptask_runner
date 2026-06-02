@@ -160,12 +160,13 @@ module McptaskRunner
           #{workflow_notice}
 
           #{result_format_instruction(
-            '"status": "success", "pr_number": N, "branch_name": "...", "hours": {"per_day": X, "task_estimated": Y, "already_worked": Z}',
+            '"status": "success", "pr_number": N, "branch_name": "..."',
             extra_rules: ['pr_number + branch_name REQUIRED whenever PR was created (success / ci_failed / merge_failed / preexisting_test_errors)']
           )}
 
-          #{auto_squash_hours_data_instruction}
-          3. Set status:
+          #{auto_squash_progress_logging_instruction}
+
+          Set status:
              #{next_task_auto_squash_status_options}
         INSTRUCTIONS
       end
@@ -185,16 +186,11 @@ module McptaskRunner
         STATUS
       end
 
-      # Autosquash variant of hours_data_instruction. Same milestones but 100% is gated
+      # Autosquash variant of progress_logging_instruction. Same milestones but 100% is gated
       # on an actual `gh pr view` merge check — prevents marking task done when PR was
       # never merged (preexisting tests, ci_failed, merge_failed).
-      def auto_squash_hours_data_instruction
+      def auto_squash_progress_logging_instruction
         <<~INSTRUCTION.strip
-          Hours data:
-          1. mcptask://user (server="mcptask-online", LITERAL URI — no account suffix) → "hour_goal"=per_day, "worked_out"=already_worked
-             Read BEFORE logging work progress
-          2. Task "duration_best" → task_estimated (e.g. "1 hodina" → 1.0)
-
           PROGRESS LOGGING (MANDATORY — min 3× LogWorkProgressTool calls during run):
           - Single 100% call at end = UNACCEPTABLE. Caller sees no interim state.
           - Milestones (minimum cadence, bump progress_percent each time):

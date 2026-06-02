@@ -9,8 +9,7 @@ module McptaskRunner
         # Triage prompt when task_id is explicitly pinned.
         # Branch detection limited to checking whether a matching feature branch exists.
         class TaskPinned < TaskBase
-          def initialize(task_id:, ignore_quota:)
-            super(ignore_quota: ignore_quota)
+          def initialize(task_id:)
             @task_id = task_id
           end
 

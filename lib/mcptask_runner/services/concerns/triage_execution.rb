@@ -51,12 +51,12 @@ module McptaskRunner
         @builder&.set_task(task_id: task_id_for_triage)
         @builder&.set_status(:triage)
         EventStream.emit_snapshot(@builder.to_h, force: true) if @builder
-        triage_result = ClaudeCode::Triage.new(verbose: @verbose, task_id: task_id_for_triage, story_id: story_id_for_triage, ignore_quota: @ignore_quota, snapshot_builder: @builder).run
+        triage_result = ClaudeCode::Triage.new(verbose: @verbose, task_id: task_id_for_triage, story_id: story_id_for_triage, snapshot_builder: @builder).run
 
         return triage_result if triage_result['status'] == 'no_more_tasks'
 
-        if !@ignore_quota && quota_exceeded_per_triage?(triage_result)
-          Logger.info_stdout('[WorkLoop] Quota exceeded before execution, skipping task')
+        if !@ignore_quota && QuotaGuard.exceeded?
+          Logger.info_stdout('[WorkLoop] Quota exceeded before execution (live REST), skipping task')
           return { 'status' => 'quota_exceeded' }
         end
 
@@ -77,7 +77,7 @@ module McptaskRunner
           story_id = triage_result['story_id']
           Logger.info_stdout("[WorkLoop] Story ##{story_id} detected from @next, switching to story loop")
           return run_story_loop(story_id, executor_class, model_override: model_override,
-                                first_task_id: triaged_task_id, triage_result: triage_result)
+                                first_task_id: triaged_task_id)
         end
 
         execute_with_triage(executor_class, triaged_task_id, model_override, resuming,
@@ -103,17 +103,17 @@ module McptaskRunner
         executor = bug_executor_class.new(task_id: pinned_id, verbose: @verbose,
                                           model_override: 'genius', resuming: false,
                                           snapshot_builder: @builder)
-        result = run_with_quota_guard(executor, nil, pinned_id)
+        result = run_with_quota_guard(executor, pinned_id)
         Logger.info_stdout("[WorkLoop] Pinned urgent bug ##{pinned_id} completed with status: #{result['status']}")
         release_urgent_pin_if_done(pinned_id, result)
         result
       end
 
       def execute_with_triage(executor_class, task_id, model_override, resuming, **kwargs)
-        triage_result = kwargs.delete(:triage_result)
+        kwargs.delete(:triage_result)
         executor_kwargs = kwargs.merge(verbose: @verbose, model_override: model_override, resuming: resuming, task_id: task_id, snapshot_builder: @builder)
 
-        result = run_with_quota_guard(executor_class.new(**executor_kwargs), triage_result, task_id)
+        result = run_with_quota_guard(executor_class.new(**executor_kwargs), task_id)
         Logger.info_stdout("[WorkLoop] Task completed with status: #{result['status']}")
         Logger.debug("[WorkLoop] Full result: #{result.inspect}")
         release_urgent_pin_if_done(task_id, result)
@@ -133,8 +133,8 @@ module McptaskRunner
         @task_id = nil
       end
 
-      def run_with_quota_guard(executor, triage_result, task_id)
-        apply_quota_watch(executor, triage_result) unless @ignore_quota
+      def run_with_quota_guard(executor, task_id)
+        apply_quota_watch(executor) unless @ignore_quota
         switch_to_main_if_urgent_bug(executor.run)
       rescue McptaskRunner::QuotaExceededMidTaskError => e
         Logger.warn("[WorkLoop] #{e.message} — ending loop with quota_exceeded_mid_task")
@@ -190,20 +190,15 @@ module McptaskRunner
         [$CHILD_STATUS.success?, output.strip]
       end
 
-      def apply_quota_watch(executor, triage_result)
-        executor.quota_watch = build_quota_watch(triage_result)
+      # Arm the executor's mid-task heartbeat guard with live quota numbers (REST, not
+      # agent self-report). Seeds the UI badge; the heartbeat then re-polls REST itself.
+      def apply_quota_watch(executor)
+        status = QuotaGuard.status
+        return unless status.rest_ok && status.per_day.positive?
+
+        executor.quota_watch = { per_day_hours: status.per_day, already_worked_hours: status.worked_today }
       rescue NoMethodError
         # Executor doesn't support quota_watch (test mocks, future executors) — skip silently.
-      end
-
-      def build_quota_watch(triage_result)
-        hours = triage_result&.dig('hours')
-        return nil unless hours
-
-        per_day = hours['per_day'].to_f
-        return nil unless per_day.positive?
-
-        { per_day_hours: per_day, already_worked_hours: hours['already_worked'].to_f }
       end
 
       def resolve_triaged_task_id(triage_result, explicit_task_id)
@@ -259,50 +254,6 @@ module McptaskRunner
           Logger.warn("[WorkLoop] No story executor mapping for #{executor_class.name}, using StoryManual")
           ClaudeCode::StoryManual
         end
-      end
-
-      # Whether triage's verdict really means we must stop for quota.
-      # The hours block (per_day/already_worked) is authoritative — it comes straight from the
-      # mcptask://user read. A bare status="quota_exceeded" that the hours contradict is a model
-      # glitch (e.g. SessionStart hook polluting the child session); trust the math over the string.
-      def quota_exceeded_per_triage?(triage_result)
-        if triage_result['hours']
-          exceeded = triage_quota_exceeded?(triage_result)
-          if !exceeded && triage_result['status'] == 'quota_exceeded'
-            Logger.warn('[WorkLoop] Triage status=quota_exceeded but hours show quota NOT exceeded — ignoring bogus verdict, continuing')
-          end
-          return exceeded
-        end
-
-        # No hours block to verify against — fall back to trusting the status string.
-        if triage_result['status'] == 'quota_exceeded'
-          Logger.info_stdout('[WorkLoop] Triage reported quota exceeded (no hours block to verify)')
-          return true
-        end
-
-        false
-      end
-
-      def triage_quota_exceeded?(triage_result)
-        hours = triage_result['hours']
-        return false unless hours
-
-        raw_per_day = hours['per_day']
-        if raw_per_day.nil?
-          Logger.warn('[WorkLoop] Triage returned per_day=nil — mcptask://user read failed; skipping quota check')
-          return false
-        end
-
-        per_day = raw_per_day.to_f
-        if per_day.zero?
-          Logger.info_stdout('[WorkLoop] per_day=0 (holiday or 0-hour day); treating quota as exceeded')
-          return true
-        end
-
-        already_worked = hours['already_worked'].to_f
-        exceeded = already_worked >= per_day
-        Logger.debug("[WorkLoop] [triage_quota_exceeded?] per_day: #{per_day}h, already_worked: #{already_worked}h, exceeded: #{exceeded}")
-        exceeded
       end
     end
   end

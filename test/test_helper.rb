@@ -36,3 +36,31 @@ module UrgentBugPinTestCleanup
   end
 end
 Minitest::Test.prepend(UrgentBugPinTestCleanup)
+
+# Quota is REST-only (QuotaGuard → TimeStatusClient). The kill switch above makes the
+# live REST fetch raise, which fails CLOSED (= quota exceeded). Without a default, every
+# normal-flow test would stop at the quota gate. Stub QuotaGuard.status (NOT the underlying
+# TimeStatusClient.fetch — that stays real so time_status_client_test / test_isolation_test
+# keep exercising it) to an under-quota verdict. Tests needing a specific quota wrap their
+# body in `stub_quota(...)` from QuotaTestHelper.
+module DefaultQuotaTestStub
+  def before_setup
+    super
+    McptaskRunner::QuotaGuard.define_singleton_method(:status) do
+      McptaskRunner::QuotaGuard::Status.new(exceeded: false, worked_today: 0.0, per_day: 8.0, rest_ok: true)
+    end
+  end
+end
+Minitest::Test.prepend(DefaultQuotaTestStub)
+
+# Helper to drive the REST quota verdict in a test. Stubs QuotaGuard.status for the block.
+# Pass worked/per_day (exceeded derived), or rest_ok: false to exercise the fail-closed path.
+module QuotaTestHelper
+  def stub_quota(worked: 0.0, per_day: 8.0, rest_ok: true, exceeded: nil, &block)
+    exceeded = (!rest_ok || !per_day.positive? || worked >= per_day) if exceeded.nil?
+    status = McptaskRunner::QuotaGuard::Status.new(
+      exceeded: exceeded, worked_today: worked, per_day: per_day, rest_ok: rest_ok
+    )
+    McptaskRunner::QuotaGuard.stub(:status, status, &block)
+  end
+end
