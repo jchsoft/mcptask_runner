@@ -2,7 +2,8 @@
 # frozen_string_literal: true
 
 # Increment mcptask_runner version by 0.1
-# This script is called by Claude Code after successfully completing a task
+# Called automatically by the post-merge git hook (bin/hooks/post-merge).
+# Do NOT run manually — the hook already calls this after every merge that touches lib/.
 # Usage: ruby bin/increment_version.rb
 
 # Add lib to load path

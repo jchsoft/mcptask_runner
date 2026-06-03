@@ -19,11 +19,8 @@ Generic exploration order (Memory → `/discover` → CodeGraph → LSP → Read
 - **All checks must pass before commit**
 
 ## Version Management
-**Important**: After completing mcptask_runner task (code committed and ready):
-- Run: `ruby bin/increment_version.rb` to increment mcptask_runner version by 0.1
-- Only increments mcptask_runner version, not projects where runner used
+Version is **auto-incremented by the post-merge hook** (`bin/hooks/post-merge`) when `lib/` files change.
+- **Do NOT run `ruby bin/increment_version.rb` manually** — the hook runs it after merge, so manual + hook = double increment.
 - Version file: `lib/mcptask_runner/version.rb`
-- Current version displayed at startup
-- Pattern: 0.1.0 → 0.1.1 → 0.1.2 → ... → 0.1.9 → 0.2.0 → 0.2.1 → etc
-- Run AFTER code changes committed
-- Example: implement feature, commit code, then run `ruby bin/increment_version.rb` before ending task
+- Pattern: 0.1.0 → 0.1.1 → ... → 0.1.9 → 0.2.0 → etc
+- Hook installed via: `bin/install-hooks` (copies `bin/hooks/` into `.git/hooks/`)
