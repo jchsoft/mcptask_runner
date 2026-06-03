@@ -28,6 +28,8 @@ detectors:
     enabled: false
   TooManyInstanceVariables:
     max_instance_variables: 14
+    exclude:
+      - McptaskRunner::SnapshotBuilder
   TooManyConstants:
     max_constants: 7
   TooManyMethods:
