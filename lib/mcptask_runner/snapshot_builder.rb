@@ -10,6 +10,10 @@ module McptaskRunner
   class SnapshotBuilder
     SCHEMA_VERSION = 2
 
+    # Immutable session identity, set once at construction and only read when
+    # building a snapshot — bundled so the two fields count as one ivar.
+    Identity = Data.define(:session_id, :machine_id)
+
     # Latest thinking block self-expires after this many seconds of quiet, so a
     # stale thought never lingers in the snapshot once Claude moves on.
     THINKING_TTL_S = 30
@@ -48,8 +52,7 @@ module McptaskRunner
 
     def initialize(session_id:, machine_id:)
       @mutex = Mutex.new
-      @session_id = session_id
-      @machine_id = machine_id
+      @identity = Identity.new(session_id: session_id, machine_id: machine_id)
       @task_id = nil
       @task_name = nil
       @status = "starting"
@@ -223,8 +226,8 @@ module McptaskRunner
       now_mono = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       {
         schema_version:   SCHEMA_VERSION,
-        session_id:       @session_id,
-        machine_id:       @machine_id,
+        session_id:       @identity.session_id,
+        machine_id:       @identity.machine_id,
         task_id:          @task_id,
         task_name:        @task_name,
         status:           @status,
