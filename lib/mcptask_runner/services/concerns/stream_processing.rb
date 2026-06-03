@@ -177,26 +177,28 @@ module McptaskRunner
         kill_process(@state.child_pid)
       end
 
-      # Fire ONLY on a genuine API error carrying the limit message. A *successful*
-      # tool_result whose content merely echoes the phrase (Grep/Read/cat over a file
-      # that documents it — e.g. claude_code_base.rb's ContextOverflowError comment, or
-      # this concern itself) must NOT trip the kill. That self-detection killed a healthy
-      # 30K-token session: a Read of the very file defining the error matched the phrase
-      # and the watchdog mistook it for a real overflow (mirrors tool_not_enabled_error?).
+      # Fire ONLY on a genuine API-level overflow. The API rejects an oversized prompt as a
+      # WHOLE request, so it surfaces at the TOP LEVEL of a stream event — a result event
+      # flagged is_error / subtype:error, a top-level error envelope, or (for the raw CLI) a
+      # non-JSON stderr line. It NEVER arrives as a nested tool_result.
+      #
+      # A tool_result carrying the phrase is tool OUTPUT, not the session's own overflow, and
+      # must NOT trip the kill — in TWO ways, both of which self-detonated healthy sessions:
+      #   1. a *successful* Read/Grep/cat over a file documenting the phrase (e.g.
+      #      claude_code_base.rb's ContextOverflowError comment) — is_error:false;
+      #   2. a *failed* command (is_error:true) whose output merely quotes the phrase — e.g.
+      #      `ruby bin/ci` exiting 1 with context_overflow_test.rb's own log lines in stdout.
+      # The old nested-tool_result branch caught case 2 (the file/tests defining the error
+      # raised it), so it is gone — only top-level / raw-CLI signals remain.
       def context_overflow_error?(line)
         return false unless line.include?('Prompt is too long') ||
                             line.include?('prompt is too long') ||
                             line.include?('context_length_exceeded')
 
         parsed = JSON.parse(line)
-        return true if parsed['is_error'] == true || parsed['subtype'].to_s.start_with?('error')
-        return true if parsed.key?('error') # top-level API error envelope
-
-        blocks = parsed.dig('message', 'content')
-        blocks.is_a?(Array) && blocks.any? do |block|
-          block['type'] == 'tool_result' && block['is_error'] &&
-            block['content'].to_s.match?(/prompt is too long|context_length_exceeded/i)
-        end
+        parsed['is_error'] == true ||
+          parsed['subtype'].to_s.start_with?('error') ||
+          parsed.key?('error') # top-level API error envelope
       rescue JSON::ParserError
         # Non-JSON line = raw CLI/stderr text. Tool-result echoes always arrive as JSON
         # stream events, so a bare line carrying the phrase is the CLI's own API error.

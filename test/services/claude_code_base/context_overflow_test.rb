@@ -100,15 +100,42 @@ class ClaudeCodeBaseContextOverflowTest < Minitest::Test
     refute killed, 'must not kill a healthy session over echoed file content'
   end
 
-  # A genuine error-flagged tool_result carrying the phrase SHOULD still trip.
-  def test_check_for_context_overflow_fires_on_error_tool_result
+  # Regression: a healthy ~88K-token self-hosted run was killed when the agent ran
+  # `ruby bin/ci`, which exited 1 (failed) → tool_result is_error:true, AND whose output
+  # quoted "Prompt is too long" because the suite runs context_overflow_test.rb (this very
+  # file). The old nested-tool_result branch matched is_error+phrase and self-detonated.
+  # A tool_result is tool OUTPUT — never the session's own API overflow — so an error-flagged
+  # tool_result echoing the phrase must NOT trip the kill.
+  def test_check_for_context_overflow_ignores_failed_command_tool_result_echoing_phrase
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.instance_variable_get(:@state).child_pid = 12_345
+    failed_ci = JSON.generate(
+      'type' => 'user',
+      'message' => { 'content' => [
+        { 'type' => 'tool_result', 'is_error' => true,
+          'content' => "Exit code 1\nCI Runner\ncontext_overflow_test.rb\n" \
+                        "❌ [ClaudeCodeBase] Context overflow detected ('Prompt is too long')\n" }
+      ] }
+    )
+
+    killed = false
+    base.stub(:kill_process, ->(_pid) { killed = true }) do
+      base.send(:check_for_context_overflow, failed_ci)
+    end
+
+    refute base.instance_variable_get(:@state).context_overflow,
+           'a failed command echoing the phrase must not flag overflow'
+    refute killed, 'must not kill a healthy session over a failed bin/ci tool_result'
+  end
+
+  # A genuine API-level overflow arrives at the TOP LEVEL of a result event
+  # (is_error:true), not nested in a tool_result — that path must still trip.
+  def test_check_for_context_overflow_fires_on_top_level_error_result_event
     base = McptaskRunner::ClaudeCodeBase.new
     base.instance_variable_get(:@state).child_pid = 12_345
     err = JSON.generate(
-      'type' => 'user',
-      'message' => { 'content' => [
-        { 'type' => 'tool_result', 'is_error' => true, 'content' => 'API error: Prompt is too long' }
-      ] }
+      'type' => 'result', 'subtype' => 'error_during_execution',
+      'is_error' => true, 'result' => 'Prompt is too long'
     )
 
     base.stub(:kill_process, ->(_pid) {}) do
