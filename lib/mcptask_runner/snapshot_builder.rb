@@ -37,6 +37,9 @@ module McptaskRunner
     # Additionally: any → frozen (server watchdog), any → closed (end_session).
     # processing → triage: loop iterations skipping finished (story loop, executor crashed
     # before its finished-transition guard). Without it, FSM rejects legitimate loop resets.
+    # finished → processing: urgent-bug-pin bypass — after a story/task finishes and pins an
+    # urgent bug, execute_pinned_urgent_bug skips triage and jumps the next task straight to
+    # processing. Without it the loop crashes with InvalidTransitionError on the pinned bug.
     TRANSITIONS = {
       "starting"   => %w[triage processing waiting error],
       "triage"     => %w[processing waiting triage error],
@@ -45,7 +48,7 @@ module McptaskRunner
       "stalled"    => %w[processing triage error closed],
       "frozen"     => %w[processing triage error closed pending],
       "pending"    => %w[processing triage error closed frozen],
-      "finished"   => %w[closed waiting triage],
+      "finished"   => %w[closed waiting triage processing],
       "error"      => %w[closed triage],
       "closed"     => []
     }.freeze

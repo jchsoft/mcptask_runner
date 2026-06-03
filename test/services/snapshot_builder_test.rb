@@ -226,13 +226,16 @@ class SnapshotBuilderTest < Minitest::Test
     end
   end
 
-  def test_invalid_transition_finished_to_processing_raises
+  # Urgent-bug-pin bypass: after a story/task finishes and pins an urgent bug,
+  # execute_pinned_urgent_bug skips triage and jumps the pinned bug straight to
+  # processing — so finished → processing must be allowed (regression: this used
+  # to crash the loop with InvalidTransitionError on the pinned bug).
+  def test_valid_transition_finished_to_processing_urgent_pin
     @builder.set_status("triage")
     @builder.set_status("processing")
     @builder.set_status("finished")
-    assert_raises(McptaskRunner::InvalidTransitionError) do
-      @builder.set_status("processing")
-    end
+    @builder.set_status("processing")
+    assert_equal "processing", @builder.to_h[:status]
   end
 
   # Loop iteration may re-enter triage when the prior task did not formally finish:
