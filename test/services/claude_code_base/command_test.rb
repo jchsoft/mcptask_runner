@@ -52,6 +52,10 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
   end
 
   def test_base_command_defaults_to_resolved_claude_path
+    # CLAUDE_COMMAND_PREFIX is a load-time constant from config/launcher.yml. The fallback to
+    # the resolved claude path is only observable on hosts WITHOUT a launcher override.
+    skip 'host has a config/launcher.yml override' if McptaskRunner::ClaudeCodeBase::CLAUDE_COMMAND_PREFIX
+
     base = McptaskRunner::ClaudeCodeBase.new
     base.stub(:resolve_claude_path, '/usr/bin/claude') do
       assert_equal ['/usr/bin/claude'], base.send(:base_command)
