@@ -14,6 +14,8 @@ module McptaskRunner
   class Updater
     Error = Class.new(StandardError)
 
+    SkillEntry = Struct.new(:skill, :dest)
+
     def initialize(target_dir: Dir.pwd, force: ENV['FORCE'] == '1')
       @target_dir = File.expand_path(target_dir)
       @force      = force
@@ -46,40 +48,40 @@ module McptaskRunner
     end
 
     def process_skill(skill, manifest)
-      dest      = SkillInstaller.dest(@target_dir, skill)
+      entry     = SkillEntry.new(skill, SkillInstaller.dest(@target_dir, skill))
       gem_hash  = SkillInstaller.content_hash(SkillInstaller.src(skill))
-      host_hash = File.exist?(dest) ? SkillInstaller.content_hash(dest) : nil
+      host_hash = File.exist?(entry.dest) ? SkillInstaller.content_hash(entry.dest) : nil
       baseline  = manifest[skill]
 
-      action = classify(skill, dest, gem_hash, host_hash, baseline)
+      action = classify(entry, gem_hash, host_hash, baseline)
       manifest[skill] = gem_hash if %w[added updated force-updated].include?(action)
       action
     end
 
-    def classify(skill, dest, gem_hash, host_hash, baseline)
-      return copy_skill(skill, dest, 'added')   if host_hash.nil?
-      return 'up-to-date'                       if gem_hash == host_hash
-      return copy_skill(skill, dest, 'updated') if baseline && host_hash == baseline
+    def classify(entry, gem_hash, host_hash, baseline)
+      return copy_skill(entry, 'added')   if host_hash.nil?
+      return 'up-to-date'                 if gem_hash == host_hash
+      return copy_skill(entry, 'updated') if baseline && host_hash == baseline
 
-      handle_conflict(skill, dest)
+      handle_conflict(entry)
     end
 
-    def copy_skill(skill, dest, label)
-      SkillInstaller.copy!(skill, dest)
+    def copy_skill(entry, label)
+      SkillInstaller.copy!(entry.skill, entry.dest)
       label
     end
 
-    def handle_conflict(skill, dest)
+    def handle_conflict(entry)
       unless @force
-        warn "[Updater] conflict — #{skill}: locally modified, skipped (use FORCE=1 to overwrite)"
+        warn "[Updater] conflict — #{entry.skill}: locally modified, skipped (use FORCE=1 to overwrite)"
         return 'conflict-skipped'
       end
 
-      bak = "#{dest}.bak"
+      bak = "#{entry.dest}.bak"
       FileUtils.rm_rf(bak)
-      FileUtils.cp_r(dest, bak)
-      SkillInstaller.copy!(skill, dest)
-      puts "[Updater] #{skill}: backed up to #{File.basename(bak)}, overwritten"
+      FileUtils.cp_r(entry.dest, bak)
+      SkillInstaller.copy!(entry.skill, entry.dest)
+      puts "[Updater] #{entry.skill}: backed up to #{File.basename(bak)}, overwritten"
       'force-updated'
     end
 
