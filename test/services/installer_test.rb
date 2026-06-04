@@ -16,15 +16,11 @@ class InstallerTest < Minitest::Test
     FileUtils.mkdir_p(@target_dir)
 
     @prev_mt  = ENV.delete('MCPTASK_TOKEN')
-    @prev_wv  = ENV.delete('WORKVECTOR_KAMR_TOKEN')
-    @prev_lt  = ENV.delete('LLMMN_TOKEN')
   end
 
   def teardown
     FileUtils.remove_entry(@tmpdir) if File.exist?(@tmpdir)
-    ENV['MCPTASK_TOKEN']         = @prev_mt if @prev_mt
-    ENV['WORKVECTOR_KAMR_TOKEN'] = @prev_wv if @prev_wv
-    ENV['LLMMN_TOKEN']           = @prev_lt if @prev_lt
+    ENV['MCPTASK_TOKEN'] = @prev_mt if @prev_mt
   end
 
   # --- helpers ---
@@ -172,27 +168,25 @@ class InstallerTest < Minitest::Test
 
   def test_warns_about_missing_env_tokens
     _, err = capture_io { build.call }
-    assert_match 'MCPTASK_TOKEN',         err
-    assert_match 'WORKVECTOR_KAMR_TOKEN', err
-    assert_match 'LLMMN_TOKEN',           err
+    assert_match 'MCPTASK_TOKEN', err
   end
 
   def test_missing_tokens_write_placeholder_in_plist
     capture_io { build.call }
-    assert_match 'SET_MCPTASK_TOKEN_HERE',         plist_content
-    assert_match 'SET_WORKVECTOR_KAMR_TOKEN_HERE', plist_content
-    assert_match 'SET_LLMMN_TOKEN_HERE',           plist_content
+    assert_match 'SET_MCPTASK_TOKEN_HERE', plist_content
   end
 
   def test_present_env_tokens_written_to_plist
-    ENV['MCPTASK_TOKEN']         = 'tok_mt_789'
-    ENV['WORKVECTOR_KAMR_TOKEN'] = 'tok_wv_123'
-    ENV['LLMMN_TOKEN']           = 'tok_lt_456'
+    ENV['MCPTASK_TOKEN'] = 'tok_mt_789'
 
     capture_io { build.call }
     assert_match 'tok_mt_789', plist_content
-    assert_match 'tok_wv_123', plist_content
-    assert_match 'tok_lt_456', plist_content
+  end
+
+  def test_independent_service_tokens_not_written_to_plist
+    capture_io { build.call }
+    refute_match 'WORKVECTOR_KAMR_TOKEN', plist_content
+    refute_match 'LLMMN_TOKEN',           plist_content
   end
 
   # --- bundled skills exist in gem ---

@@ -211,7 +211,7 @@ module McptaskRunner
     end
 
     def env_tokens
-      %w[MCPTASK_TOKEN WORKVECTOR_KAMR_TOKEN LLMMN_TOKEN].each_with_object({}) do |key, hash|
+      %w[MCPTASK_TOKEN].each_with_object({}) do |key, hash|
         value = ENV[key].to_s
         value = mcp_json_env(key).to_s if value.empty?
         if value.empty?

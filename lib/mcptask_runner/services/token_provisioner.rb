@@ -26,22 +26,6 @@ module McptaskRunner
         email_env: 'MCPTASK_EMAIL',
         pass_env:  'MCPTASK_PASSWORD',
         label:     'mcptask.online'
-      },
-      {
-        env_var:   'WORKVECTOR_KAMR_TOKEN',
-        filename:  'workvector_kamr_token',
-        url:       'https://mcptask.online/api/sessions',
-        email_env: 'MCPTASK_KAMR_EMAIL',
-        pass_env:  'MCPTASK_KAMR_PASSWORD',
-        label:     'mcptask.online (KAMR)'
-      },
-      {
-        env_var:   'LLMMN_TOKEN',
-        filename:  'llmmn_token',
-        url:       'https://llm-memory.com/api/sessions',
-        email_env: 'LLMMN_EMAIL',
-        pass_env:  'LLMMN_PASSWORD',
-        label:     'llm-memory.com'
       }
     ].freeze
 
