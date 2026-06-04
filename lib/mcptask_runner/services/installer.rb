@@ -18,6 +18,12 @@ module McptaskRunner
       '2' => 'mcptask_runner:manual:today'
     }.freeze
 
+    MCPTASK_ONLINE_ENTRY = {
+      'type'    => 'sse',
+      'url'     => 'https://mcptask.online/mcp/sse',
+      'headers' => { 'Authorization' => 'Bearer ${MCPTASK_TOKEN}' }
+    }.freeze
+
     # dirs: optional override paths { launch_agents:, log_base: } — grouped so callers
     # (and tests) pass install destinations as one argument.
     def initialize(target_dir: Dir.pwd, force: ENV['FORCE'] == '1', dirs: {}, mode: nil, platform: RbConfig::CONFIG['host_os'])
@@ -38,6 +44,7 @@ module McptaskRunner
       check_helper_binaries
       sync_permissions
       provision_tokens
+      configure_mcp_json
       generate_launch_agent
     end
 
@@ -79,6 +86,33 @@ module McptaskRunner
       puts '[Installer] Syncing permissions...'
       syncer = PermissionSyncer.sync(target_dir: @target_dir)
       puts syncer.report
+    end
+
+    def configure_mcp_json
+      puts '[Installer] Configuring .mcp.json (mcptask-online entry)...'
+
+      path = mcp_json_path
+      data = load_mcp_json || {}
+      data['mcpServers'] ||= {}
+
+      existing = data['mcpServers']['mcptask-online']
+      if existing == MCPTASK_ONLINE_ENTRY
+        puts "[Installer] .mcp.json already contains correct mcptask-online entry — no change"
+        return
+      end
+
+      data['mcpServers']['mcptask-online'] = MCPTASK_ONLINE_ENTRY
+      write_mcp_json(path, data)
+      puts "[Installer] .mcp.json updated: #{path}"
+    end
+
+    def mcp_json_path
+      File.join(@target_dir, '.mcp.json')
+    end
+
+    def write_mcp_json(path, data)
+      FileUtils.mkdir_p(File.dirname(path))
+      File.write(path, "#{JSON.pretty_generate(data)}\n")
     end
 
     def generate_launch_agent
@@ -199,7 +233,7 @@ module McptaskRunner
     end
 
     def load_mcp_json
-      path = File.join(@target_dir, '.mcp.json')
+      path = mcp_json_path
       return nil unless File.exist?(path)
 
       JSON.parse(File.read(path))
