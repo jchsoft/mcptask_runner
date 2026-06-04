@@ -13,14 +13,6 @@ module McptaskRunner
   class Installer
     Error = Class.new(StandardError)
 
-    SKILLS_SOURCE_DIR = File.expand_path('../../../config/skills', __dir__)
-    SKILL_NAMES = %w[
-      ci-runner ci-start ci-wait wait-unlock
-      test-runner test-start test-wait
-      discover memory-search mcptask-read mcptask-write
-    ].freeze
-    # Binaries expected at ~/.claude/bin/ — required by CI and test skills
-    HELPER_BINARIES = %w[ci_wait ci_start test_start test_lock run_with_log].freeze
     RAKE_MODES = {
       '1' => 'mcptask_runner:auto:squash:today',
       '2' => 'mcptask_runner:manual:today'
@@ -52,37 +44,28 @@ module McptaskRunner
 
     def install_skills
       puts '[Installer] Installing skills...'
+      manifest       = SkillInstaller.read_manifest(@target_dir)
       added, skipped = [], []
 
-      SKILL_NAMES.each do |skill|
-        dest = skill_dest(skill)
+      SkillInstaller::SKILL_NAMES.each do |skill|
+        dest = SkillInstaller.dest(@target_dir, skill)
         if File.exist?(dest) && !@force
           skipped << skill
         else
-          FileUtils.rm_rf(dest)
-          FileUtils.mkdir_p(File.dirname(dest))
-          FileUtils.cp_r(File.join(SKILLS_SOURCE_DIR, skill), dest)
+          SkillInstaller.copy!(skill, dest)
+          manifest[skill] = SkillInstaller.content_hash(SkillInstaller.src(skill))
           added << skill
         end
       end
 
+      SkillInstaller.write_manifest(@target_dir, manifest)
       added.each   { |s| puts "  [+] #{s}" }
       skipped.each { |s| puts "  [~] #{s} (exists — use FORCE=1 to overwrite)" }
       puts "[Installer] Skills: #{added.size} added, #{skipped.size} skipped."
     end
 
-    def skill_dest(skill)
-      File.join(@target_dir, '.claude', 'skills', skill)
-    end
-
     def check_helper_binaries
-      bin_dir = File.expand_path('~/.claude/bin')
-      missing = HELPER_BINARIES.reject { |b| File.exist?(File.join(bin_dir, b)) }
-      return if missing.empty?
-
-      warn '[Installer] WARNING: missing helper binaries in ~/.claude/bin (required by CI/test skills):'
-      missing.each { |b| warn "  • #{b}" }
-      warn '[Installer] Install these from the mcptask_runner dev environment before using CI/test skills.'
+      SkillInstaller.check_helper_binaries
     end
 
     def sync_permissions

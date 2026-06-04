@@ -63,6 +63,12 @@ namespace :mcptask_runner do
     McptaskRunner::Installer.call
   end
 
+  desc 'Refresh bundled skills after gem update — syncs gem skills into .claude/skills/, preserving local edits (set FORCE=1 to overwrite conflicts)'
+  task update: :environment do
+    require 'mcptask_runner/services/updater'
+    McptaskRunner::Updater.call
+  end
+
   namespace :auto do
     desc 'Run a single task once with automatic PR squash-merge after CI passes'
     task once: :environment do
