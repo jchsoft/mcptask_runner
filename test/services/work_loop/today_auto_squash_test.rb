@@ -104,7 +104,11 @@ class WorkLoopTodayAutoSquashTest < Minitest::Test
     with_triage_stub do
       McptaskRunner::ClaudeCode::TodayAutoSquash.stub(:new, mock) do
         loop_instance = McptaskRunner::WorkLoop.new
-        results = loop_instance.execute(:today_auto_squash)
+        # Stub current_git_branch defensively — ci_failed is not in URGENT_BUG_PIN_STATUSES
+        # today, but matching the sibling tests keeps the suite immune to future list changes.
+        results = loop_instance.stub(:current_git_branch, 'main') do
+          loop_instance.execute(:today_auto_squash)
+        end
 
         assert_instance_of Array, results
         assert_equal 1, results.length
@@ -158,7 +162,14 @@ class WorkLoopTodayAutoSquashTest < Minitest::Test
         Kernel.stub(:sleep, nil) do
           Time.stub(:now, Time.new(2025, 1, 15, 19, 0)) do
             loop_instance = McptaskRunner::WorkLoop.new
-            results = loop_instance.execute(:today_auto_squash)
+            # Stub current_git_branch so switch_to_main_if_urgent_bug does NOT call the
+            # real `git checkout main` mid-test — preexisting_test_errors is in
+            # URGENT_BUG_PIN_STATUSES (triage_execution.rb:16), so without this stub the
+            # test repo physically switches to main and pollutes subsequent tests in the
+            # same bin/ci run.
+            results = loop_instance.stub(:current_git_branch, 'main') do
+              loop_instance.execute(:today_auto_squash)
+            end
 
             assert_equal 2, results.length
             assert_equal 'preexisting_test_errors', results.first['status']
