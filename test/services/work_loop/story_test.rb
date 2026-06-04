@@ -344,7 +344,13 @@ class WorkLoopStoryTest < Minitest::Test
     McptaskRunner::ClaudeCode::Triage.stub(:new, triage_mock) do
       McptaskRunner::ClaudeCode::StoryManual.stub(:new, executor_mock) do
         loop_instance = McptaskRunner::WorkLoop.new(story_id: 123)
-        results = loop_instance.execute(:story_manual)
+        # Stub current_git_branch so switch_to_main_if_urgent_bug (triage_execution.rb:149)
+        # does NOT call the real `git checkout main` mid-test — same pattern as
+        # today_auto_squash_test.rb:195. Without this, the test repo physically switches
+        # to main and pollutes subsequent tests in the same bin/ci run.
+        results = loop_instance.stub(:current_git_branch, 'main') do
+          loop_instance.execute(:story_manual)
+        end
 
         assert_instance_of Array, results
         assert_equal 1, results.length
@@ -364,7 +370,11 @@ class WorkLoopStoryTest < Minitest::Test
     McptaskRunner::ClaudeCode::Triage.stub(:new, triage_mock) do
       McptaskRunner::ClaudeCode::StoryAutoSquash.stub(:new, executor_mock) do
         loop_instance = McptaskRunner::WorkLoop.new(story_id: 123)
-        results = loop_instance.execute(:story_auto_squash)
+        # Stub current_git_branch so switch_to_main_if_urgent_bug does NOT call the real
+        # `git checkout main` mid-test — same pattern as today_auto_squash_test.rb:195.
+        results = loop_instance.stub(:current_git_branch, 'main') do
+          loop_instance.execute(:story_auto_squash)
+        end
 
         assert_instance_of Array, results
         assert_equal 1, results.length
