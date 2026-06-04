@@ -6,6 +6,7 @@ require 'fileutils'
 
 class InstallerTest < Minitest::Test
   Klass = McptaskRunner::Installer
+  SI    = McptaskRunner::SkillInstaller
 
   def setup
     @tmpdir = Dir.mktmpdir('installer_test')
@@ -51,14 +52,14 @@ class InstallerTest < Minitest::Test
   def test_installs_all_skills
     capture_io { build.call }
 
-    Klass::SKILL_NAMES.each do |skill|
+    SI::SKILL_NAMES.each do |skill|
       dest = File.join(@target_dir, '.claude', 'skills', skill, 'SKILL.md')
       assert File.exist?(dest), "Expected SKILL.md for #{skill}"
     end
   end
 
   def test_skips_existing_skills_without_force
-    skill = Klass::SKILL_NAMES.first
+    skill = SI::SKILL_NAMES.first
     dest  = File.join(@target_dir, '.claude', 'skills', skill)
     FileUtils.mkdir_p(dest)
     File.write(File.join(dest, 'SKILL.md'), 'sentinel')
@@ -70,7 +71,7 @@ class InstallerTest < Minitest::Test
   end
 
   def test_force_overwrites_existing_skills
-    skill = Klass::SKILL_NAMES.first
+    skill = SI::SKILL_NAMES.first
     dest  = File.join(@target_dir, '.claude', 'skills', skill)
     FileUtils.mkdir_p(dest)
     File.write(File.join(dest, 'SKILL.md'), 'sentinel')
@@ -191,8 +192,8 @@ class InstallerTest < Minitest::Test
   # --- bundled skills exist in gem ---
 
   def test_all_bundled_skill_files_present
-    Klass::SKILL_NAMES.each do |skill|
-      path = File.join(Klass::SKILLS_SOURCE_DIR, skill, 'SKILL.md')
+    SI::SKILL_NAMES.each do |skill|
+      path = File.join(SI::SKILLS_SOURCE_DIR, skill, 'SKILL.md')
       assert File.exist?(path), "Bundled skill missing: config/skills/#{skill}/SKILL.md"
     end
   end
