@@ -40,7 +40,7 @@ module McptaskRunner
         @last_snapshot_emit = nil
         @last_snapshot = nil
         @last_emitted_status = nil
-        @builder = SnapshotBuilder.new(session_id: @session_id, machine_id: @machine_id)
+        @builder = SnapshotBuilder.new(session_id: @session_id, machine_id: @machine_id, project_name: project_name_from_claude_md)
 
         Logger.info_stdout "[EventStream] Starting session: session_id=#{@session_id} machine_id=#{@machine_id.inspect} mode=#{mode.inspect}"
         connect
@@ -299,6 +299,12 @@ module McptaskRunner
         JSON.parse(File.read(path))
       rescue StandardError
         nil
+      end
+
+      def project_name_from_claude_md
+        return nil unless File.exist?('CLAUDE.md')
+
+        File.read('CLAUDE.md').match(/- Project name is:\s*"([^"]+)"/)&.then { |m| m[1] }
       end
     end
   end

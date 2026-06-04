@@ -14,9 +14,10 @@ class SnapshotBuilderTest < Minitest::Test
 
   def test_initial_snapshot_fields
     h = @builder.to_h
-    assert_equal 2,              h[:schema_version]
+    assert_equal 3,              h[:schema_version]
     assert_equal "sess-uuid-123", h[:session_id]
     assert_equal "test-machine",  h[:machine_id]
+    assert_nil   h[:project_name]
     assert_equal "starting",      h[:status]
     assert_nil   h[:task_id]
     assert_nil   h[:task_name]
@@ -28,6 +29,13 @@ class SnapshotBuilderTest < Minitest::Test
     assert_nil   h[:thinking]
     assert_nil   h[:message]
     assert_equal [], h[:active_actions]
+  end
+
+  def test_project_name_stored_in_snapshot
+    builder = McptaskRunner::SnapshotBuilder.new(
+      session_id: "sess", machine_id: "box", project_name: "My Project"
+    )
+    assert_equal "My Project", builder.to_h[:project_name]
   end
 
   def test_to_h_returns_frozen_hash
@@ -407,7 +415,7 @@ class SnapshotBuilderTest < Minitest::Test
 
   def test_to_h_keys_match_schema_contract
     required_keys = %i[
-      schema_version session_id machine_id task_id task_name
+      schema_version session_id machine_id project_name task_id task_name
       status model active_actions thinking last_activity_at error_message
       quota closed_at ttl_seconds updated_at
     ]

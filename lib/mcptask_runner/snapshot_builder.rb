@@ -8,11 +8,14 @@ module McptaskRunner
   # Durations use monotonic clock internally; wall-clock only for ISO 8601
   # timestamp fields (last_activity_at, updated_at, started_at, closed_at).
   class SnapshotBuilder
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     # Immutable session identity, set once at construction and only read when
     # building a snapshot — bundled so the two fields count as one ivar.
-    Identity = Data.define(:session_id, :machine_id)
+    # project_name is the human-readable name of the mcptask.online project
+    # the runner is working in (resolved from CLAUDE.md). Web UI uses it to
+    # disambiguate runners on multi-project dashboards.
+    Identity = Data.define(:session_id, :machine_id, :project_name)
 
     # Latest thinking block self-expires after this many seconds of quiet, so a
     # stale thought never lingers in the snapshot once Claude moves on.
@@ -53,9 +56,9 @@ module McptaskRunner
       "closed"     => []
     }.freeze
 
-    def initialize(session_id:, machine_id:)
+    def initialize(session_id:, machine_id:, project_name: nil)
       @mutex = Mutex.new
-      @identity = Identity.new(session_id: session_id, machine_id: machine_id)
+      @identity = Identity.new(session_id: session_id, machine_id: machine_id, project_name: project_name)
       @task_id = nil
       @task_name = nil
       @status = "starting"
@@ -231,6 +234,7 @@ module McptaskRunner
         schema_version:   SCHEMA_VERSION,
         session_id:       @identity.session_id,
         machine_id:       @identity.machine_id,
+        project_name:     @identity.project_name,
         task_id:          @task_id,
         task_name:        @task_name,
         status:           @status,
