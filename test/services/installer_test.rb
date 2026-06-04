@@ -203,4 +203,72 @@ class InstallerTest < Minitest::Test
       assert File.exist?(path), "Bundled skill missing: config/skills/#{skill}/SKILL.md"
     end
   end
+
+  # --- .mcp.json ---
+
+  def mcp_json_path
+    File.join(@target_dir, '.mcp.json')
+  end
+
+  def mcp_json_content
+    assert File.exist?(mcp_json_path), ".mcp.json not found at #{mcp_json_path}"
+    JSON.parse(File.read(mcp_json_path))
+  end
+
+  def test_creates_mcp_json_with_mcptask_online_entry_when_missing
+    refute File.exist?(mcp_json_path)
+
+    capture_io { build.call }
+
+    data = mcp_json_content
+    entry = data.fetch('mcpServers').fetch('mcptask-online')
+    assert_equal 'sse',  entry['type']
+    assert_equal 'https://mcptask.online/mcp/sse', entry['url']
+    assert_equal 'Bearer ${MCPTASK_TOKEN}', entry.dig('headers', 'Authorization')
+  end
+
+  def test_merges_mcptask_online_entry_into_existing_mcp_json
+    existing = {
+      'mcpServers' => {
+        'llmmn-production' => {
+          'type'    => 'sse',
+          'url'     => 'https://llm-memory.com/mcp/sse',
+          'headers' => { 'Authorization' => 'Bearer ${LLMMN_TOKEN}' }
+        }
+      }
+    }
+    File.write(mcp_json_path, JSON.generate(existing))
+
+    capture_io { build.call }
+
+    data = mcp_json_content
+    assert data['mcpServers'].key?('llmmn-production'), 'existing server must be preserved'
+    assert data['mcpServers'].key?('mcptask-online'),   'mcptask-online must be added'
+  end
+
+  def test_idempotent_when_mcptask_online_entry_already_present
+    existing = {
+      'mcpServers' => {
+        'mcptask-online' => {
+          'type'    => 'sse',
+          'url'     => 'https://mcptask.online/mcp/sse',
+          'headers' => { 'Authorization' => 'Bearer ${MCPTASK_TOKEN}' }
+        }
+      }
+    }
+    File.write(mcp_json_path, JSON.pretty_generate(existing))
+    mtime_before = File.mtime(mcp_json_path)
+
+    out, = capture_io { build.call }
+
+    assert_equal mtime_before, File.mtime(mcp_json_path)
+    assert_match 'no change', out
+  end
+
+  def test_preserves_literal_mcptask_token_env_reference
+    capture_io { build.call }
+    raw = File.read(mcp_json_path)
+    assert_includes raw, 'Bearer ${MCPTASK_TOKEN}'
+    refute_match(/Bearer [A-Za-z0-9._-]{8,}/, raw)
+  end
 end
