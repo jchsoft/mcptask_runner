@@ -37,6 +37,7 @@ module McptaskRunner
       install_skills
       check_helper_binaries
       sync_permissions
+      provision_tokens
       generate_launch_agent
     end
 
@@ -66,6 +67,12 @@ module McptaskRunner
 
     def check_helper_binaries
       SkillInstaller.check_helper_binaries
+    end
+
+    def provision_tokens
+      require 'mcptask_runner/services/token_provisioner'
+      puts '[Installer] Provisioning tokens...'
+      TokenProvisioner.call
     end
 
     def sync_permissions
@@ -170,7 +177,7 @@ module McptaskRunner
     end
 
     def env_tokens
-      %w[WORKVECTOR_KAMR_TOKEN LLMMN_TOKEN].each_with_object({}) do |key, hash|
+      %w[MCPTASK_TOKEN WORKVECTOR_KAMR_TOKEN LLMMN_TOKEN].each_with_object({}) do |key, hash|
         value = ENV[key].to_s
         value = mcp_json_env(key).to_s if value.empty?
         if value.empty?
