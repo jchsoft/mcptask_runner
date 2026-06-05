@@ -18,6 +18,11 @@ Generic exploration order (Memory → `/discover` → CodeGraph → LSP → Read
 - **Individual tests**: `ruby -I lib -I test test/services/<test_file>.rb`
 - **All checks must pass before commit**
 
+## Logs
+- **Per-run state** (start here for hung runs): `log/runs/run_*.json` — `RunLog`, refreshed per heartbeat. Off: `MCPTASK_RUN_LOG=0`.
+- **Raw stream**: `~/logs/mcptask_runner/<slug>.log`.
+- **`/ci-runner`**: `~/.claude/logs/projects/<sha256-cwd>/ci-runner_<ts>.log`.
+
 ## Version Management
 Version is **auto-incremented by the post-merge hook** (`bin/hooks/post-merge`) when `lib/` files change.
 - **Do NOT run `ruby bin/increment_version.rb` manually** — the hook runs it after merge, so manual + hook = double increment.
