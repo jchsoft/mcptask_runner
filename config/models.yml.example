@@ -1,0 +1,20 @@
+# Per-host spice-level => model ID mapping (OPTIONAL).
+#
+# Copy to config/models.yml in the project where the runner runs to PIN specific model
+# IDs without source changes. The file is gitignored — each host keeps its own copy and
+# edits are never committed. Without it the runner falls back to generic CLI aliases
+# (opus/sonnet/haiku), which Claude resolves to its current defaults.
+#
+# The three keys map to the runner's spice levels. The pinned IDs drive BOTH the main
+# --model flag AND forked skills/subagents (model: haiku|sonnet|opus in their frontmatter),
+# which the runner exports as ANTHROPIC_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL — so on a host
+# routed through a non-Anthropic backend you must pin all three, or forks die with
+# "model ... may not exist".
+genius: 'claude-opus-4-8'
+smart: 'claude-sonnet-4-6'
+primitive: 'claude-haiku-4-5-20251001'
+
+# Example — route every level through an ollama-served model (see launcher.yml):
+# genius: 'minimax-m3:cloud'
+# smart: 'minimax-m3:cloud'
+# primitive: 'minimax-m3:cloud'
