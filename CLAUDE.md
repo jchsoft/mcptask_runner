@@ -26,7 +26,5 @@ Generic exploration order (Memory → `/discover` → CodeGraph → LSP → Read
 ## Version Management
 Version is **auto-incremented by the post-merge hook** (`bin/hooks/post-merge`) when `lib/` files change.
 - **Do NOT run `ruby bin/increment_version.rb` manually** — the hook runs it after merge, so manual + hook = double increment.
-- **EXCEPTION — direct/fast-forward push to `main`:** the hook only fires on an actual merge (it diffs `ORIG_HEAD..HEAD`). A fast-forward push of commits made directly on `main` never triggers it, so a `lib/` change ships with the version unchanged and hosts see nothing new on `bundle update`. In that case you **must** bump manually before pushing: run `ruby bin/increment_version.rb`, then `git commit -m "chore: bump version after merge"`, then push. (No double-increment risk here — no merge will run the hook.)
-- Version file: `lib/mcptask_runner/version.rb`
-- Pattern: 0.1.0 → 0.1.1 → ... → 0.1.9 → 0.2.0 → etc
+- **EXCEPTION — direct/fast-forward push to `main`:** the hook only fires on an actual merge
 - Hook installed via: `bin/install-hooks` (copies `bin/hooks/` into `.git/hooks/`)
