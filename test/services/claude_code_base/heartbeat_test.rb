@@ -368,4 +368,101 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
 
     assert_equal "error", builder.status
   end
+
+  def test_absolute_silence_kill_constant_is_defined
+    assert_equal 1800, McptaskRunner::ClaudeCodeBase::ABSOLUTE_SILENCE_KILL
+  end
+
+  # The backstop the watchdog was missing: kill on prolonged stream silence even while a tool
+  # is still flagged active (the stuck-MCP-call shape that hung two runners for 90 min).
+  def test_terminate_for_stream_silence_kills_even_with_active_tool
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)["t1"] = {
+      name: "mcp__mcptask-online__LogWorkProgressTool", summary: "",
+      mono_started_at: now - 100, started_at: Time.now.utc.iso8601(3)
+    }
+
+    quiet = McptaskRunner::ClaudeCodeBase::ABSOLUTE_SILENCE_KILL + 10
+    base.stub(:kill_process, nil) do
+      base.stub(:release_test_lock, nil) do
+        base.stub(:write_debug_dump, nil) do
+          McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
+            assert base.send(:terminate_for_stream_silence, quiet, "")
+          end
+        end
+      end
+    end
+
+    assert_equal "error", builder.status
+    assert_match(/stream-silence/, builder.to_h[:error_message])
+    assert base.instance_variable_get(:@state).stopping
+    assert base.instance_variable_get(:@state).inactivity_timeout
+  end
+
+  def test_terminate_for_stream_silence_skips_below_threshold
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+
+    refute base.send(:terminate_for_stream_silence, 60, "")
+    assert_equal "processing", builder.status
+  end
+
+  def test_heartbeat_tick_returns_true_when_safety_terminates
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.stub(:enforce_safety_deadlines, true) do
+      assert base.send(:heartbeat_tick, timing_hash, "")
+    end
+  end
+
+  def test_heartbeat_tick_runs_observability_and_returns_false_when_safe
+    base = McptaskRunner::ClaudeCodeBase.new
+    observed = false
+    base.stub(:enforce_safety_deadlines, false) do
+      base.stub(:update_observability, ->(_t) { observed = true }) do
+        refute base.send(:heartbeat_tick, timing_hash, "")
+      end
+    end
+    assert observed, "observability runs when no kill fired"
+  end
+
+  # A throw inside a tick must NOT kill the watchdog — it logs and the loop survives to the
+  # next cycle. This is the regression that let the heartbeat thread die for the rest of a run.
+  def test_heartbeat_tick_swallows_exceptions_and_continues
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.stub(:enforce_safety_deadlines, ->(*) { raise "transient quota REST blip" }) do
+      McptaskRunner::Logger.stub(:error, nil) do
+        refute base.send(:heartbeat_tick, timing_hash, ""), "raising tick is swallowed, loop continues"
+      end
+    end
+  end
+
+  # Supervisor restarts heartbeat_loop after a crash until the run is stopping.
+  def test_supervised_heartbeat_restarts_after_crash
+    base = McptaskRunner::ClaudeCodeBase.new
+    state = base.instance_variable_get(:@state)
+    calls = 0
+    McptaskRunner::Logger.stub(:error, nil) do
+      base.stub(:heartbeat_loop, lambda { |*|
+        calls += 1
+        state.stopping = true if calls >= 2
+        raise "boom" if calls < 2
+      }) do
+        base.send(:start_supervised_heartbeat, "", 0.0).join(2)
+      end
+    end
+    assert_operator calls, :>=, 2, "watchdog must restart heartbeat_loop after a crash"
+  end
+
+  private
+
+  def timing_hash
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    { now: now, current_count: 10, stream_advanced: false, inactive_seconds: 0, stream_quiet_seconds: 0 }
+  end
 end
