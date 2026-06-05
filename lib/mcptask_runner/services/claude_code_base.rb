@@ -156,6 +156,7 @@ module McptaskRunner
         project_name: project_name_from_claude_md
       )
       @stall_detector = StallDetector.new(@log_tag)
+      @run_log = nil
       OutputFormatter.verbose_mode = verbose
     end
 
@@ -191,6 +192,7 @@ module McptaskRunner
       Logger.info_stdout "[#{@log_tag}] Elapsed time: #{elapsed_hours} hours"
 
       result = parse_result(@accumulated_output, elapsed_hours)
+      @run_log&.record_result(result)
 
       # Claude emitted TASKRUNNER_RESULT — trust its terminal output even if context-overflow
       # or 529 patterns appeared earlier in the stream. Those may be sub-agent or transient
@@ -278,6 +280,49 @@ module McptaskRunner
       @stall_detector = StallDetector.new(@log_tag)
       @last_quota_poll_at = 0.0
       @quota_rest_failures = 0
+      @run_log = nil
+    end
+
+    # Open a fresh per-attempt run record once the child pid is known. Best-effort: a logging
+    # failure must never abort the run, so swallow and continue.
+    def start_run_log
+      return unless RunLog.enabled?
+
+      snap = @snapshot_builder.to_h
+      @run_log = RunLog.new(log_tag: @log_tag, session_id: snap[:session_id])
+      @run_log.start(
+        session_id: snap[:session_id], machine_id: snap[:machine_id], project_name: snap[:project_name],
+        task_id: snap[:task_id], task_name: snap[:task_name], model: snap[:model], executor: @log_tag,
+        pid: @state.child_pid, retry_count: @retry_state.count, marker_retry: @retry_state.marker_retry_mode
+      )
+    rescue StandardError => e
+      Logger.warn "[#{@log_tag}] RunLog start failed: #{e.message}"
+    end
+
+    # Stamp the terminal record. Called before clear_active_actions so a hung tool is captured.
+    def finalize_run_log(elapsed)
+      @run_log&.finalize(
+        termination: derive_termination_reason,
+        snapshot: @snapshot_builder.to_h,
+        stream_events: @state.stream_line_count,
+        elapsed_s: elapsed
+      )
+    rescue StandardError => e
+      Logger.warn "[#{@log_tag}] RunLog finalize failed: #{e.message}"
+    end
+
+    # Why the attempt ended, derived from terminal @state flags. error_message in the snapshot
+    # carries the finer detail (e.g. absolute-silence vs ordinary inactivity).
+    def derive_termination_reason
+      return 'result' if @state.result_received
+      return 'inactivity_kill' if @state.inactivity_timeout
+      return 'quota' if @state.quota_exceeded
+      return "stalled:#{@state.stalled.reason}" if @state.stalled
+      return 'context_overflow' if @state.context_overflow
+      return 'tool_not_enabled' if @state.tool_not_enabled
+      return 'api_overload' if @state.api_overload
+
+      'stream_ended'
     end
 
     def raise_streaming_errors_if_any(stream_error)
@@ -310,10 +355,11 @@ module McptaskRunner
       Open3.popen3(FORK_MODEL_ENV, *command, pgroup: true) do |stdin, stdout, stderr, wait_thr|
         @state.child_pid = wait_thr.pid
         stdin.close
+        start_run_log
 
         stdout_thread    = start_stdout_thread(stdout, stdout_content)
         stderr_thread    = start_stderr_thread(stderr, stderr_content)
-        heartbeat_thread = Thread.new { heartbeat_loop(stderr_content, execution_start) }
+        heartbeat_thread = start_supervised_heartbeat(stderr_content, execution_start)
 
         join_streaming_threads(stdout_thread, stderr_thread, heartbeat_thread, wait_thr, stderr_content)
       end
@@ -384,6 +430,7 @@ module McptaskRunner
     def finalize_streaming(execution_start)
       elapsed = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - execution_start).round(1)
       Logger.info_stdout "[#{@log_tag}] Execution finished in #{elapsed}s (#{@state.stream_line_count} stream events)"
+      finalize_run_log(elapsed)
       @snapshot_builder.clear_active_actions
       return unless %w[processing pending].include?(@snapshot_builder.status)
 
