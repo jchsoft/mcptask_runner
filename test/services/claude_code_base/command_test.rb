@@ -86,4 +86,27 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
 
     assert_equal 'claude-future-99', base.send(:effective_model_name)
   end
+
+  # Forked skills (model: haiku/sonnet/opus in frontmatter) resolve those aliases via the
+  # ANTHROPIC_DEFAULT_*_MODEL env vars, NOT the main process --model flag. When models.yml pins a
+  # backend, the pinned IDs must flow to forks too, or `model: haiku` forks request a built-in
+  # Anthropic ID the backend rejects ("model ... may not exist").
+  def test_fork_model_env_maps_tier_aliases_when_models_pinned
+    skip 'host has no config/models.yml (generic aliases)' unless McptaskRunner::ClaudeCodeBase::MODEL_IDS_FROM_FILE
+
+    env = McptaskRunner::ClaudeCodeBase::FORK_MODEL_ENV
+    ids = McptaskRunner::ClaudeCodeBase::MODEL_IDS
+
+    assert_equal ids.fetch('genius'), env['ANTHROPIC_DEFAULT_OPUS_MODEL']
+    assert_equal ids.fetch('smart'), env['ANTHROPIC_DEFAULT_SONNET_MODEL']
+    assert_equal ids.fetch('primitive'), env['ANTHROPIC_DEFAULT_HAIKU_MODEL']
+  end
+
+  def test_fork_model_env_empty_without_pinned_models
+    skip 'host has config/models.yml (pinned IDs)' if McptaskRunner::ClaudeCodeBase::MODEL_IDS_FROM_FILE
+
+    # Without pinned IDs the generic values are aliases ('haiku'), not full names — leaving the
+    # env unset lets the CLI use its correct Anthropic defaults.
+    assert_empty McptaskRunner::ClaudeCodeBase::FORK_MODEL_ENV
+  end
 end

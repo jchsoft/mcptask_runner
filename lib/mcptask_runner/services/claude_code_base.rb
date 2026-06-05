@@ -81,20 +81,34 @@ module McptaskRunner
     MODEL_IDS_FROM_FILE = File.exist?(MODELS_FILE)
     MODEL_IDS = (MODEL_IDS_FROM_FILE ? YAML.load_file(MODELS_FILE) : GENERIC_MODEL_IDS).freeze
 
+    # Tier-alias overrides for forked skills / subagents. The --model flag pins only the MAIN
+    # process; a fork that declares `model: haiku` (or sonnet/opus) in its frontmatter resolves
+    # that alias through these env vars, falling back to the built-in Anthropic IDs
+    # (e.g. claude-haiku-4-5-...) when they are unset. On a host whose config/models.yml pins a
+    # non-Anthropic backend (ollama/minimax), those built-in IDs do not exist and the fork dies
+    # with "model ... may not exist" — so we export the pinned IDs here too. Only when models.yml
+    # is present: the generic fallback values are aliases ('haiku'), not the full model names these
+    # vars require, and unset is already correct on Anthropic hosts.
+    FORK_MODEL_ENV = (MODEL_IDS_FROM_FILE ? {
+      'ANTHROPIC_DEFAULT_OPUS_MODEL' => MODEL_IDS['genius'],
+      'ANTHROPIC_DEFAULT_SONNET_MODEL' => MODEL_IDS['smart'],
+      'ANTHROPIC_DEFAULT_HAIKU_MODEL' => MODEL_IDS['primitive']
+    }.compact : {}).freeze
+
     # Optional per-host-project launcher override. When config/launcher.yml exists in the
     # project where the runner runs, its `command:` array REPLACES the default `[claude_path]`
     # prefix — e.g. [ollama, launch, claude] to route through an alternate backend for testing.
     # The runner still appends its own flags (-p, --model, --output-format=stream-json, …) and
     # still derives --model from config/models.yml, so the stream-json contract stays intact.
     LAUNCHER_FILE = File.join(Dir.pwd, 'config', 'launcher.yml').freeze
-    LAUNCHER_CONFIG = (File.exist?(LAUNCHER_FILE) ? YAML.load_file(LAUNCHER_FILE) : {}).freeze
-    CLAUDE_COMMAND_PREFIX = LAUNCHER_CONFIG['command'].freeze
+    CLAUDE_COMMAND_PREFIX = (File.exist?(LAUNCHER_FILE) ? YAML.load_file(LAUNCHER_FILE) : {})['command'].freeze
 
     # One-line description of where model IDs came from, for the boot banner.
     def self.model_source_description
       pairs = MODEL_IDS.map { |level, id| "#{level}=#{id}" }.join(', ')
       source = MODEL_IDS_FROM_FILE ? "config/models.yml (pinned): #{pairs}" : "generic aliases (no config/models.yml): #{pairs}"
-      "Models: #{source}"
+      fork_note = FORK_MODEL_ENV.empty? ? '' : " | fork aliases -> #{FORK_MODEL_ENV.values.uniq.join(', ')}"
+      "Models: #{source}#{fork_note}"
     end
 
     # One-line description of the launch command prefix, for the boot banner.
@@ -293,7 +307,7 @@ module McptaskRunner
       EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)
       execution_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-      Open3.popen3(*command, pgroup: true) do |stdin, stdout, stderr, wait_thr|
+      Open3.popen3(FORK_MODEL_ENV, *command, pgroup: true) do |stdin, stdout, stderr, wait_thr|
         @state.child_pid = wait_thr.pid
         stdin.close
 
