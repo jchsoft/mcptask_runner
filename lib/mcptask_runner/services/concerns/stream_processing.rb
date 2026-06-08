@@ -66,10 +66,14 @@ module McptaskRunner
             @snapshot_builder.set_thinking(text.empty? ? '...' : text)
             EventStream.emit_snapshot(@snapshot_builder.to_h)
           when 'tool_use'
-            summary = summarize_tool_input(item['name'], item['input'])
-            @snapshot_builder.set_todos(item.dig('input', 'todos')) if item['name'] == 'TodoWrite'
+            # Claude sends `input` as a String (not Hash) for Skill / TaskOutput. Any other
+            # tool doing the same must not crash here — guard before .dig on input.
+            input = item['input']
+            input_hash = input.is_a?(Hash) ? input : {}
+            summary = summarize_tool_input(item['name'], input)
+            @snapshot_builder.set_todos(input_hash['todos']) if item['name'] == 'TodoWrite'
             @snapshot_builder.tool_started(tool_id: item['id'], name: item['name'], summary: summary,
-                                           description: item.dig('input', 'description'))
+                                           description: input_hash['description'])
             EventStream.emit_snapshot(@snapshot_builder.to_h)
             Logger.debug "[#{@log_tag}] [tool_tracking] Tool started: #{item['name']} (#{item['id']}) #{summary}"
             check_stall(@stall_detector&.observe_tool_use(item))
@@ -89,7 +93,11 @@ module McptaskRunner
       end
 
       def summarize_tool_input(name, input)
-        return '' unless input.is_a?(Hash)
+        # Skill / TaskOutput arrive with a String input (file path / task id). Other tools
+        # could do the same in the future — fall through to truncate_summary instead of crashing
+        # on the Hash-only accessors below. For path-like strings, show the basename so the
+        # web card doesn't echo an entire `/Users/.../claude_code_base.rb:67` absolute path.
+        return summarize_string_input(name, input) unless input.is_a?(Hash)
 
         raw = case name
               when 'Bash' then input['command']
@@ -104,6 +112,13 @@ module McptaskRunner
         end
 
         truncate_summary(raw.to_s)
+      end
+
+      def summarize_string_input(name, input)
+        text = input.to_s
+        return truncate_summary(text) unless name == 'Skill' && text.start_with?('/')
+
+        truncate_summary(File.basename(text))
       end
 
       def summarize_todos(todos)

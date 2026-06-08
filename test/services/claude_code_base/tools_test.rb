@@ -109,6 +109,45 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     assert_equal 0, base.instance_variable_get(:@snapshot_builder).active_tool_count
   end
 
+  # Regression for #10594 — Claude sends `input` as a String (not Hash) for Skill and
+  # TaskOutput. The old `item.dig('input', 'description')` crashed on String#dig and the
+  # whole track_tool_event call raised mid-stream, leaving the card with broken summaries.
+  def test_skill_with_string_input_does_not_crash_and_summarizes_basename
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = JSON.generate(
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "skill_1", name: "Skill",
+                             input: "/Users/karelmracek/.claude/projects/-Users-karelmracek-Projects-projectoid-ii/memory/mcptask_runner/lib/mcptask_runner/services/claude_code_base.rb:67" }] }
+    )
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_tool_event, line) }
+
+    action = base.instance_variable_get(:@snapshot_builder).to_h[:active_actions].first
+    assert_equal 'Skill', action[:name]
+    assert_equal 'claude_code_base.rb:67', action[:summary]
+  end
+
+  def test_taskoutput_with_string_input_does_not_crash
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = JSON.generate(
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "to_1", name: "TaskOutput", input: "bjpskaj13" }] }
+    )
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_tool_event, line) }
+
+    action = base.instance_variable_get(:@snapshot_builder).to_h[:active_actions].first
+    assert_equal 'TaskOutput', action[:name]
+    assert_equal 'bjpskaj13', action[:summary]
+  end
+
+  def test_summarize_tool_input_returns_empty_for_non_hash_input
+    base = McptaskRunner::ClaudeCodeBase.new
+    assert_equal '', base.send(:summarize_tool_input, 'Skill', nil)
+    assert_equal 'just-a-string', base.send(:summarize_tool_input, 'Skill', 'just-a-string')
+    assert_equal '[1, 2, 3]', base.send(:summarize_tool_input, 'UnknownTool', [1, 2, 3])
+  end
+
   def test_track_system_task_event_marks_tool_finished_on_completed
     base = McptaskRunner::ClaudeCodeBase.new
     builder = base.instance_variable_get(:@snapshot_builder)
