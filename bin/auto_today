@@ -8,8 +8,11 @@ require "active_support/core_ext/time"
 require "active_support/core_ext/numeric/time"
 require "mcptask_runner"
 
+ignore_quota = ARGV.include?("ignore_quota=true")
+
 puts "=" * 80
 puts "[McptaskRunner] Version: #{McptaskRunner::VERSION}"
+puts "[McptaskRunner] Ignore quota: #{ignore_quota}"
 puts "=" * 80
 
-McptaskRunner::WorkLoop.new.execute(:today_auto_squash)
+McptaskRunner::WorkLoop.new(ignore_quota: ignore_quota).execute(:today_auto_squash)
