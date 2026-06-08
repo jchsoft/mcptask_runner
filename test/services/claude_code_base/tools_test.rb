@@ -193,6 +193,40 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     assert_includes McptaskRunner::ClaudeCodeBase::LONG_RUNNING_TOOLS, 'Task'
   end
 
+  # Regression for #10588 — TaskOutput polls output from a long-running sub-task; it stays
+  # "active" for the full duration of whatever it is tailing (CI, build, test run). The
+  # :quick ceiling (kill at 300s) was firing on legitimate work and killing the subprocess
+  # with the "Tool TaskOutput hung Ns" error. Classify it as :long like Bash/Task/Skill.
+  def test_long_running_tools_constant_includes_taskoutput
+    assert_includes McptaskRunner::ClaudeCodeBase::LONG_RUNNING_TOOLS, 'TaskOutput'
+  end
+
+  def test_tool_hang_timeout_for_taskoutput_uses_long_ceiling
+    base = McptaskRunner::ClaudeCodeBase.new
+    assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS[:long][:warn],
+                 base.send(:tool_hang_timeout_for, 'TaskOutput')
+    assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS[:long][:kill],
+                 base.send(:tool_kill_timeout_for, 'TaskOutput')
+  end
+
+  # The exact bug shape from #10588: TaskOutput in active_actions past 300s with a quiet
+  # stream must NOT trip the kill (it would on the old :quick classification).
+  def test_terminate_for_hung_tool_if_dead_skips_taskoutput_below_long_kill
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)['taskoutput_1'] = {
+      name: 'TaskOutput', summary: 'polling long task',
+      mono_started_at: now - 800, started_at: Time.now.utc.iso8601(3) # > 300s quick kill, < 1500s long kill
+    }
+
+    refute base.send(:terminate_for_hung_tool_if_dead, now, "", 300),
+           'TaskOutput must NOT be killed at the :quick 300s ceiling — it is :long'
+    assert_equal 'processing', builder.status
+  end
+
   def test_tool_hang_timeout_for_bash_uses_long_ceiling
     base = McptaskRunner::ClaudeCodeBase.new
     assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS[:long][:warn],
