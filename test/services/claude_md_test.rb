@@ -40,6 +40,16 @@ class ClaudeMdTest < Minitest::Test
     assert_equal 'Foo Bar', McptaskRunner::ClaudeMd.project_name
   end
 
+  def test_without_is_keyword
+    write_claude_md("- Project name: Zuboklik")
+    assert_equal 'Zuboklik', McptaskRunner::ClaudeMd.project_name
+  end
+
+  def test_without_is_keyword_quoted
+    write_claude_md("- Project name: \"Zuboklik\"")
+    assert_equal 'Zuboklik', McptaskRunner::ClaudeMd.project_name
+  end
+
   def test_case_insensitive_keyword
     write_claude_md("- PROJECT NAME IS: \"Mixed Case\"")
     assert_equal 'Mixed Case', McptaskRunner::ClaudeMd.project_name

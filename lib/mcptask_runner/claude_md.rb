@@ -13,7 +13,7 @@ module McptaskRunner
     PROJECT_NAME_REGEX = %r{
       (?:^|\n)                            # start of file or line
       \s*[-*]?                            # optional bullet, dash or asterisk
-      \s*Project\s+name\s+is:?\s*         # "Project name is:" keyword
+      \s*Project\s+name(?:\s+is)?:?\s*    # "Project name is:" or "Project name:" keyword
       "?                                  # optional opening quote
       ([^"\n]+?)                          # captured name, non-greedy, no quotes or newlines
       "?                                  # optional closing quote
