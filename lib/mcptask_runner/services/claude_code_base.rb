@@ -153,7 +153,7 @@ module McptaskRunner
       @snapshot_builder = snapshot_builder || SnapshotBuilder.new(
         session_id: SecureRandom.uuid,
         machine_id: ENV.fetch("HOSTNAME") { `hostname`.strip },
-        project_name: project_name_from_claude_md
+        project_name: ClaudeMd.project_name
       )
       @stall_detector = StallDetector.new(@log_tag)
       @run_log = nil
@@ -505,12 +505,6 @@ module McptaskRunner
       return nil unless File.exist?('CLAUDE.md')
 
       File.read('CLAUDE.md').match(/project_relative_id=(\d+)/)&.then { |m| m[1].to_i }
-    end
-
-    def project_name_from_claude_md
-      return nil unless File.exist?('CLAUDE.md')
-
-      File.read('CLAUDE.md').match(/- Project name is:\s*"([^"]+)"/)&.then { |m| m[1] }
     end
   end
 end
