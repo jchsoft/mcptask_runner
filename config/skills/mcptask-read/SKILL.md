@@ -22,7 +22,7 @@ The user message contains one of:
 
 - piece ID (`load piece 10464`, `piece #10464`, `task #10464`, `story #10464`)
 - next task request (`next task`, optionally with a project relative ID)
-- attachment download (`download attachment <id> from piece <piece_id>`)
+- attachment download (`download attachment <id> from piece <piece_id>`) — you return the ready-to-run `curl` command; the **parent** runs it and Reads the file (see "Attachment download" below)
 - user info (`who am I`)
 - list of pieces (`list pieces`, with optional page/size)
 
@@ -126,22 +126,27 @@ Same template as piece details, for the piece the `@next` endpoint returned.
 
 ### Attachment download
 
-```bash
-curl -s "https://mcptask.online/api/{account_code}/pieces/{piece_relative_id}/attachments/{attachment_id}/download" -o /tmp/{filename}
-```
+**You (the fork) do NOT download the file.** A fork's working directory and process are torn down when the skill returns; even though `/tmp` is shared, having the fork curl a file the parent then depends on is unreliable — and a fork that just emits a "downloaded" block without actually running curl leaves the parent Reading a path that does not exist. So: **return the command, let the parent run it.**
 
-Use `relative_id` (not the internal `id`) in download URLs. Piece responses carry both: `id` is the internal DB row, `relative_id` is the URL-facing one. Using the wrong one returns a JSON error written into the file as if it were the image.
-
-Return:
+First fetch the piece via `mcptask://pieces/{account_code}/{piece_id}` so you have the real `relative_id`, the attachment's `relative_id`/`id`, the exact `filename`, and the `mime`. Then build a `curl` command the parent can paste verbatim. Save to a SAFE path — slugify the filename (strip spaces / non-ASCII; keep the extension), because attachment names often contain spaces and accented characters that break `-o`:
 
 ```
-## Attachment downloaded
-- Path: /tmp/{filename}
-- Size: {bytes}
-- Mime: {mime}
+## Attachment — ready to download
+- Piece: #{piece_relative_id} | Attachment id={attachment_id} relative_id={attachment_relative_id}
+- Filename: {original_filename}
+- Mime: {mime} | Size: {bytes}B
+- Suggested local path: /tmp/piece_{piece_relative_id}_att_{attachment_id}.{ext}
 
-The parent should Read the path to view content.
+The PARENT must run this, then Read the file and verify it exists (do NOT assume success):
+
+    curl -fsS "https://mcptask.online/api/{account_code}/pieces/{piece_relative_id}/attachments/{attachment_id}/download" -o /tmp/piece_{piece_relative_id}_att_{attachment_id}.{ext} && ls -l /tmp/piece_{piece_relative_id}_att_{attachment_id}.{ext}
+
+If `curl` reports an HTTP error or the file is tiny/JSON, the download failed (wrong id or auth) — surface that, do not Read garbage as an image.
 ```
+
+Use `relative_id` (not the internal `id`) for the piece in download URLs. Piece responses carry both: `id` is the internal DB row, `relative_id` is the URL-facing one. Using the wrong one returns a JSON error written into the file as if it were the image. The `-fsS` flags make `curl` fail loudly on HTTP errors instead of writing the error body into the file.
+
+**Never** emit a "## Attachment downloaded" / "Path: …" success block — you did not download anything, so reporting a path the parent then fails to Read is the exact bug this skill avoids. Return only the command above.
 
 ## What to strip before returning
 
