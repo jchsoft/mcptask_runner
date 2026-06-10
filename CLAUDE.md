@@ -8,7 +8,7 @@ Generic exploration order (Memory → `/discover` → CodeGraph → LSP → Read
 - Memory identifier: `wv-runner` (architecture, patterns, commands, testing info)
 
 ## mcptask.online
-- Project name is: "McpTask rails runner"
+- Project name: "McpTask rails runner"
 - project_relative_id=69
 - account_code: `jchsoft`
 
