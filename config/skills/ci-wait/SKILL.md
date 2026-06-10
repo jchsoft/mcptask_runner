@@ -42,9 +42,18 @@ LAST=<last non-empty log line>
 
 ```
 FINISHED_SELF
-EXIT_CODE=<N>
+EXIT_CODE=0
+ALL_OK
+<≤20 summary lines: step markers (✅ X passed in Ys), Minitest "Finished in" + "N runs" lines, total CI time>
+```
+
+(success — full log tail omitted; the few summary lines suffice for stats / duration save)
+
+```
+FINISHED_SELF
+EXIT_CODE=<non-zero N>
 ---BEGIN_LOG_TAIL---
-<last 200 lines of log>
+<filtered tail — signal lines only, asset/progress/deprecation noise stripped via _ci_filter_tail>
 ---END_LOG_TAIL---
 ```
 

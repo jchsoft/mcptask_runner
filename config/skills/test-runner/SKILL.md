@@ -90,7 +90,7 @@ The 10-outer-iterations cap prevents infinite loops if the lock is pathologicall
 
 ## Report format (FINISHED_SELF)
 
-The `---BEGIN_LOG_TAIL---...---END_LOG_TAIL---` block is the last 200 lines of the test log. `EXIT_CODE` is the test process's exit code.
+`EXIT_CODE` is the test process's exit code. On success, `/test-wait` emits `ALL_OK` plus a small summary block (Minitest "Runs/Assertions/Finished in" + step markers); on failure, a `---BEGIN_LOG_TAIL---...---END_LOG_TAIL---` block follows containing a filtered tail.
 
 ### EXIT_CODE=0
 ```
@@ -99,7 +99,7 @@ The `---BEGIN_LOG_TAIL---...---END_LOG_TAIL---` block is the last 200 lines of t
 Runs: X | Assertions: Y | Time: Z.Zs
 ```
 
-Pull `Runs:` / `Assertions:` / `Finished in X.XXs` from the log tail (Minitest summary).
+Pull `Runs:` / `Assertions:` / `Finished in X.XXs` from the summary lines emitted under `ALL_OK`.
 
 ### EXIT_CODE != 0
 

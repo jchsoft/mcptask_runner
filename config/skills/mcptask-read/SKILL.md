@@ -10,6 +10,12 @@ allowed-tools: ReadMcpResourceTool, Bash, ToolSearch, Read
 
 Fetch piece/user data from the `mcptask-online` MCP server and return a compact summary. The skill runs in a forked Haiku context so raw MCP JSON stays out of the parent.
 
+## ⛔ HARD RULES — read first
+
+1. **You ARE the forked Haiku context. You DO have MCP access.** Never return "I'm an agent without MCP access" — that is wrong. Either `ReadMcpResourceTool` succeeds (possibly after retries), or you return the structured error block at the bottom.
+2. **NEVER use Bash, curl, wget, Net::HTTP, or any HTTP client to fetch piece, user, or list data.** The mcptask.online HTTPS API path `/api/{account}/pieces/{id}` expects the internal `id` (NOT `relative_id`) — improvising HTTP returns the WRONG piece. All reads go through `ReadMcpResourceTool` only. (The one exception is the attachment *download* command you hand back to the parent, which uses `/attachments/{id}/download` with `relative_id` — see "Attachment download".)
+3. **Follow the steps in order. Do not skip Step 1.**
+
 ## Why this skill exists
 
 The `mcptask-online` MCP server returns rich JSON: a single piece response can be 2-10KB, a list endpoint can be 50KB+. Each call accumulates in the parent context. The companion `mcptask-write` skill stays in the parent because IDs from write results are needed for next steps, but reads are pure data fetching — they belong in a fork that summarizes before returning.
@@ -25,6 +31,14 @@ The user message contains one of:
 - attachment download (`download attachment <id> from piece <piece_id>`) — you return the ready-to-run `curl` command; the **parent** runs it and Reads the file (see "Attachment download" below)
 - user info (`who am I`)
 - list of pieces (`list pieces`, with optional page/size)
+
+## Args
+
+Optional flag tokens after the piece reference:
+
+- `with_attachments=false` — replace the full `### Attachments` block with a single comma-separated filename line. Use from triage / discovery prompts that only need extensions for content-type hints, not the IDs required for downloads. Default: `with_attachments=true` (full block).
+
+Example: `load piece 10415 with_attachments=false`
 
 ## Account code
 
@@ -96,6 +110,9 @@ Extract only what the caller needs. Use the matching template below.
 ### Attachments ({count})
 - id={attachment_id} relative_id={attachment_relative_id} | {filename} ({size_bytes}B, {mime})
 (list all — the parent needs both IDs to download)
+
+When `with_attachments=false` is in args, replace the `### Attachments` block with a single line:
+`Attachments ({count}): {filename1}, {filename2}, …` — emit `Attachments (0):` when there are none.
 
 ### Recent messages ({count})
 (include up to 3 directly relevant to the current task, 1 line each)

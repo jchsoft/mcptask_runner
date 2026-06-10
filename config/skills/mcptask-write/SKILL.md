@@ -31,8 +31,13 @@ MCP server key in `.mcp.json` is `mcptask-online`. Tool prefix: `mcp__mcptask-on
 
 `name` and `description` must be in English regardless of conversation language, because mcptask.online is read by mixed-language collaborators and the backend search/index is tuned for English.
 
-Required: `account_code`, `name`, `task_type_code` (`task`, `story`, `recurent`, `bug`), `project_relative_id`.
+Required: `account_code`, `name`, `task_type_code` (`task`, `story`, `recurent`, `bug`), `project_relative_id`, `scrum_point_code`.
 Optional: `description`, `priority`, `parent_id` (for subtasks), `duration_best_hours`.
+
+`scrum_point_code` (difficulty) is **required** — omitting it fails validation: "Trvání optimisticky/pesimisticky není v seznamu povolených hodnot". Pick by type:
+
+- Task / Recurent / Bug: `!` (0), `S` (3), `M` (5), `L` (8), `XL` (13), `XXL` (40), `XXXL` (100)
+- Story: `m!` (0), `mS` (42), `mM` (70), `mL` (112), `mXL` (182), `mXXL` (560), `mXXXL` (1400)
 
 ## LogWorkProgressTool — progressive logging
 

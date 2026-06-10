@@ -67,9 +67,11 @@ The 10-outer-iterations cap prevents infinite loops if the lock is pathologicall
 
 ## Report format (on FINISHED_SELF)
 
-The `---BEGIN_LOG_TAIL---...---END_LOG_TAIL---` block contains the last 200 lines of `bin/ci` output. `EXIT_CODE` is CI's exit code (0 = all green).
+`EXIT_CODE` is CI's exit code (0 = all green). On `EXIT_CODE=0`, `/ci-wait` emits `ALL_OK` with no log block — parent context stays clean. On non-zero, a `---BEGIN_LOG_TAIL---...---END_LOG_TAIL---` block follows containing a filtered tail (signal lines only; asset writes, deprecation warnings, dotted progress collapsed).
 
 ### On EXIT_CODE=0
+
+`/ci-wait` emits an `ALL_OK` marker followed by ≤20 summary lines (step ✅ markers, Minitest "Runs/Assertions/Finished in" lines, total CI time). Use these to fill the report — do NOT ask for the full log tail.
 
 ```
 ✅ CI passed — all steps green
