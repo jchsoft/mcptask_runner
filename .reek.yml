@@ -45,6 +45,7 @@ detectors:
   DataClump:
     exclude:
       - McptaskRunner::ClaudeCodeBase
+      - McptaskRunner::Concerns::StreamProcessing # (name, input) on summarize_tool_input / summarize_string_input / tool_description is a deliberate tool-routing tuple, not a candidate for extraction
   ManualDispatch:
     exclude:
       - McptaskRunner::Concerns::ResultParsing#parse_result
