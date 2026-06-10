@@ -73,7 +73,7 @@ module McptaskRunner
             summary = summarize_tool_input(item['name'], input)
             @snapshot_builder.set_todos(input_hash['todos']) if item['name'] == 'TodoWrite'
             @snapshot_builder.tool_started(tool_id: item['id'], name: item['name'], summary: summary,
-                                           description: input_hash['description'])
+                                           description: tool_description(item['name'], input, input_hash))
             EventStream.emit_snapshot(@snapshot_builder.to_h)
             Logger.debug "[#{@log_tag}] [tool_tracking] Tool started: #{item['name']} (#{item['id']}) #{summary}"
             check_stall(@stall_detector&.observe_tool_use(item))
@@ -94,9 +94,8 @@ module McptaskRunner
 
       def summarize_tool_input(name, input)
         # Skill / TaskOutput arrive with a String input (file path / task id). Other tools
-        # could do the same in the future — fall through to truncate_summary instead of crashing
-        # on the Hash-only accessors below. For path-like strings, show the basename so the
-        # web card doesn't echo an entire `/Users/.../claude_code_base.rb:67` absolute path.
+        # could do the same in the future — fall through to summarize_string_input instead
+        # of crashing on the Hash-only accessors below.
         return summarize_string_input(name, input) unless input.is_a?(Hash)
 
         raw = case name
@@ -108,17 +107,46 @@ module McptaskRunner
               when 'WebSearch' then input['query']
               when 'Task' then input['description'] || input['subagent_type']
               when 'TodoWrite' then summarize_todos(input['todos'])
+              when 'Skill' then input['skill']
               else input['file_path'] || input['path'] || input['query'] || input['pattern'] || input['command'] || input.values.first
         end
 
         truncate_summary(raw.to_s)
       end
 
+      # Skill input arrives either as a Hash { skill:, args: } or as a String path to the
+      # SKILL.md file (e.g. /Users/.../.claude/skills/code-simplifier/SKILL.md). The web card
+      # must show the skill NAME (e.g. "code-simplifier") as the action summary, not the
+      # file basename ("SKILL.md") — that's the user's mental model of what's running.
       def summarize_string_input(name, input)
         text = input.to_s
         return truncate_summary(text) unless name == 'Skill' && text.start_with?('/')
 
-        truncate_summary(File.basename(text))
+        truncate_summary(skill_name_from_path(text))
+      end
+
+      # Extracts the skill name from a path like /Users/.../skills/{name}/SKILL.md.
+      # Falls back to the basename when the path doesn't match the expected layout so
+      # an unusual layout still produces a readable summary instead of crashing.
+      def skill_name_from_path(path)
+        match = path.match(%r{/skills/([^/]+)/?[^/]*\z})
+        match ? match[1] : File.basename(path)
+      end
+
+      # Tool description for the snapshot. For Skill with a String input (the file path)
+      # the description carries the path so the web card shows it next to the skill name
+      # in the summary line. For Hash inputs, prefer the tool's own description field;
+      # for Skill with Hash { skill:, args: } the args go here so the user sees what was
+      # passed to the skill, separately from the skill name.
+      def tool_description(name, input, input_hash)
+        if name == 'Skill' && input.is_a?(String) && input.start_with?('/')
+          return input
+        end
+        if name == 'Skill' && (args = input_hash['args'])
+          return args.to_s
+        end
+
+        input_hash['description']
       end
 
       def summarize_todos(todos)

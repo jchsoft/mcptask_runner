@@ -112,7 +112,7 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
   # Regression for #10594 — Claude sends `input` as a String (not Hash) for Skill and
   # TaskOutput. The old `item.dig('input', 'description')` crashed on String#dig and the
   # whole track_tool_event call raised mid-stream, leaving the card with broken summaries.
-  def test_skill_with_string_input_does_not_crash_and_summarizes_basename
+  def test_skill_with_string_input_falls_back_to_basename_when_path_is_not_skills_layout
     base = McptaskRunner::ClaudeCodeBase.new
     line = JSON.generate(
       type: "assistant",
@@ -125,6 +125,48 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     action = base.instance_variable_get(:@snapshot_builder).to_h[:active_actions].first
     assert_equal 'Skill', action[:name]
     assert_equal 'claude_code_base.rb:67', action[:summary]
+    # File path goes into description so the web card can show the path under the skill name
+    assert_equal '/Users/karelmracek/.claude/projects/-Users-karelmracek-Projects-projectoid-ii/memory/mcptask_runner/lib/mcptask_runner/services/claude_code_base.rb:67',
+                 action[:description]
+  end
+
+  # Regression for #10610 — when Skill sends a String input that points to a SKILL.md
+  # inside /skills/<name>/, the web card must show the SKILL NAME (e.g. "code-simplifier")
+  # in the summary, not the file basename ("SKILL.md"). User mental model: "which skill
+  # is running", not "which file".
+  def test_skill_with_string_input_extracts_skill_name_from_skills_path
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = JSON.generate(
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "skill_2", name: "Skill",
+                             input: "/Users/karelmracek/.claude/skills/code-simplifier/SKILL.md" }] }
+    )
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_tool_event, line) }
+
+    action = base.instance_variable_get(:@snapshot_builder).to_h[:active_actions].first
+    assert_equal 'Skill', action[:name]
+    assert_equal 'code-simplifier', action[:summary]
+    assert_equal '/Users/karelmracek/.claude/skills/code-simplifier/SKILL.md', action[:description]
+  end
+
+  # Regression for #10610 — when Skill sends a Hash { skill:, args: } the summary
+  # must carry the skill name and the description must carry the args, so the card
+  # shows "Skill: code-simplifier" plus "make this code simpler" separately.
+  def test_skill_with_hash_input_summarizes_skill_name_and_describes_args
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = JSON.generate(
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "skill_3", name: "Skill",
+                             input: { skill: "code-simplifier", args: "make this code simpler" } }] }
+    )
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_tool_event, line) }
+
+    action = base.instance_variable_get(:@snapshot_builder).to_h[:active_actions].first
+    assert_equal 'Skill', action[:name]
+    assert_equal 'code-simplifier', action[:summary]
+    assert_equal 'make this code simpler', action[:description]
   end
 
   def test_taskoutput_with_string_input_does_not_crash
