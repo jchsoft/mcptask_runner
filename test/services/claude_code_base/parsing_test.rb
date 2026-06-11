@@ -202,6 +202,94 @@ class ClaudeCodeBaseParsingTest < Minitest::Test
     end
   end
 
+  # --- Marker-format variant coverage (regression for TASKRUNNER_RESULT:\n{...}) ---
+
+  def test_parse_result_legacy_prefix_marker_on_own_line
+    mock_output = "Done.\nTASKRUNNER_RESULT:\n{\"status\":\"already_done\",\"task_id\":10446,\"pr_number\":1215,\"preflight_skipped\":true}"
+    base = McptaskRunner::ClaudeCodeBase.new
+    result = base.send(:parse_result, mock_output, 0.1)
+
+    assert_equal 'already_done', result['status']
+    assert_equal 10446, result['task_id']
+    assert_equal 1215, result['pr_number']
+    assert_equal 0.1, result['hours']['task_worked']
+  end
+
+  def test_parse_result_legacy_prefix_no_space_before_brace
+    mock_output = 'TASKRUNNER_RESULT:{"status": "success", "hours": {"per_day": 8}}'
+    base = McptaskRunner::ClaudeCodeBase.new
+    result = base.send(:parse_result, mock_output, 0.5)
+
+    assert_equal 'success', result['status']
+    assert_equal 8, result['hours']['per_day']
+  end
+
+  def test_parse_result_legacy_prefix_multiple_spaces_and_tab
+    mock_output = "TASKRUNNER_RESULT:  \t {\"status\": \"success\", \"hours\": {\"per_day\": 8}}"
+    base = McptaskRunner::ClaudeCodeBase.new
+    result = base.send(:parse_result, mock_output, 0.5)
+
+    assert_equal 'success', result['status']
+    assert_equal 8, result['hours']['per_day']
+  end
+
+  def test_parse_result_legacy_prefix_blank_lines_before_json
+    mock_output = "TASKRUNNER_RESULT:\n\n{\"status\": \"success\", \"hours\": {\"per_day\": 4}}"
+    base = McptaskRunner::ClaudeCodeBase.new
+    result = base.send(:parse_result, mock_output, 0.5)
+
+    assert_equal 'success', result['status']
+    assert_equal 4, result['hours']['per_day']
+  end
+
+  def test_parse_result_legacy_prefix_own_line_in_code_block
+    mock_output = "Here is the result:\n\n```json\nTASKRUNNER_RESULT:\n{\"status\": \"success\", \"hours\": {\"per_day\": 6}}\n```"
+    base = McptaskRunner::ClaudeCodeBase.new
+    result = base.send(:parse_result, mock_output, 0.5)
+
+    assert_equal 'success', result['status']
+    assert_equal 6, result['hours']['per_day']
+  end
+
+  def test_parse_result_legacy_prefix_own_line_with_nested_json
+    mock_output = "TASKRUNNER_RESULT:\n{\"status\": \"success\", \"hours\": {\"per_day\": 8, \"task_estimated\": 2}}"
+    base = McptaskRunner::ClaudeCodeBase.new
+    result = base.send(:parse_result, mock_output, 1.5)
+
+    assert_equal 'success', result['status']
+    assert_equal 8, result['hours']['per_day']
+    assert_equal 2, result['hours']['task_estimated']
+  end
+
+  def test_parse_result_legacy_prefix_with_trailing_prose
+    mock_output = "TASKRUNNER_RESULT:\n{\"status\": \"success\", \"hours\": {\"per_day\": 8}}\n\nThat completes the task."
+    base = McptaskRunner::ClaudeCodeBase.new
+    result = base.send(:parse_result, mock_output, 0.5)
+
+    assert_equal 'success', result['status']
+    assert_equal 8, result['hours']['per_day']
+  end
+
+  def test_parse_result_json_key_marker_pretty_printed_multiline
+    mock_output = "{\n  \"TASKRUNNER_RESULT\": true,\n  \"status\": \"success\",\n  \"hours\": {\"per_day\": 8}\n}"
+    base = McptaskRunner::ClaudeCodeBase.new
+    result = base.send(:parse_result, mock_output, 0.5)
+
+    assert_equal 'success', result['status']
+    assert_equal 8, result['hours']['per_day']
+    refute result.key?('TASKRUNNER_RESULT'), 'TASKRUNNER_RESULT key should be removed from result'
+  end
+
+  def test_parse_result_prefers_json_key_when_both_forms_present
+    mock_output = "TASKRUNNER_RESULT: ignore this prose line\n{\"TASKRUNNER_RESULT\": true, \"status\": \"success\", \"task_id\": 777, \"hours\": {\"per_day\": 8}}"
+    base = McptaskRunner::ClaudeCodeBase.new
+    result = base.send(:parse_result, mock_output, 0.5)
+
+    assert_equal 'success', result['status']
+    assert_equal 777, result['task_id']
+    refute result.key?('TASKRUNNER_RESULT'), 'JSON-key path should win and strip the marker key'
+  end
+
   def test_marker_parse_failed_true_when_marker_absent
     base = McptaskRunner::ClaudeCodeBase.new
     assert base.send(:marker_parse_failed?, { 'status' => 'error', 'message' => 'No TASKRUNNER_RESULT found in output' })

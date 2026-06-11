@@ -101,7 +101,7 @@ module McptaskRunner
       end
 
       def find_legacy_prefix_marker(text)
-        marker = 'TASKRUNNER_RESULT: '
+        marker = 'TASKRUNNER_RESULT:'
         index = text.index(marker)
         return nil unless index
 
