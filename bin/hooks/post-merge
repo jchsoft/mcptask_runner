@@ -1,16 +1,26 @@
 #!/usr/bin/env bash
-# Post-merge hook: auto-increment mcptask_runner version after merge
+# Post-merge hook:
+#   1. Sync bundled skills into .claude/skills/ when config/skills/ changed.
+#   2. Auto-increment mcptask_runner version when lib/ files changed.
 set -euo pipefail
 
-# Only bump if lib/ files were changed in the merge
-CHANGED_LIB=$(git diff-tree -r --name-only ORIG_HEAD HEAD | grep '^lib/' || true)
+REPO_ROOT="$(git rev-parse --show-toplevel)"
 
+# 1. Sync skills if config/skills/ changed in this merge.
+CHANGED_SKILLS=$(git diff-tree -r --name-only ORIG_HEAD HEAD | grep '^config/skills/' || true)
+if [ -n "$CHANGED_SKILLS" ]; then
+  echo "[post-merge] config/skills changed, syncing into .claude/skills/..."
+  ruby "$REPO_ROOT/bin/sync-skills"
+fi
+
+# 2. Bump version if lib/ changed.
+CHANGED_LIB=$(git diff-tree -r --name-only ORIG_HEAD HEAD | grep '^lib/' || true)
 if [ -z "$CHANGED_LIB" ]; then
   exit 0
 fi
 
 echo "[post-merge] lib/ changed, incrementing version..."
-ruby bin/increment_version.rb
+ruby "$REPO_ROOT/bin/increment_version.rb"
 git add lib/mcptask_runner/version.rb
 git commit -m "chore: bump version after merge"
 echo "[post-merge] Version bumped."

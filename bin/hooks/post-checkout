@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Post-checkout hook: sync bundled skills into .claude/skills/ on clone or branch switch.
+# Git passes: $1=prev-HEAD $2=new-HEAD $3=branch-flag (1 = branch checkout, 0 = file checkout).
+set -euo pipefail
+
+# Only act on branch/clone checkouts, not `git checkout <file>`.
+[ "${3:-0}" = "1" ] || exit 0
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+[ -d "$REPO_ROOT/config/skills" ] || exit 0
+
+echo "[post-checkout] syncing skills into .claude/skills/..."
+ruby "$REPO_ROOT/bin/sync-skills"

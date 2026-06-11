@@ -1,0 +1,31 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Syncs the bundled skills from config/skills/ into this repo's own .claude/skills/,
+# so the skills are loadable by Claude while developing the gem itself.
+#
+# This is the dev-repo counterpart to `rake mcptask_runner:install` (which targets a
+# *host* Rails project). It does ONLY the skill copy — no tokens, LaunchAgent, or .mcp.json.
+# It is idempotent and fast, and is run automatically by the post-merge / post-checkout
+# git hooks whenever config/skills/ changes (see bin/hooks/).
+#
+# Usage: ruby bin/sync-skills
+
+$LOAD_PATH.unshift File.expand_path('../lib', __dir__)
+require 'mcptask_runner/services/skill_installer'
+
+include McptaskRunner # rubocop:disable Style/MixinUsage — script-scope convenience
+
+target   = File.expand_path('..', __dir__)
+manifest = SkillInstaller.read_manifest(target)
+
+SkillInstaller::SKILL_NAMES.each do |skill|
+  dest = SkillInstaller.dest(target, skill)
+  SkillInstaller.copy!(skill, dest)
+  manifest[skill] = SkillInstaller.content_hash(SkillInstaller.src(skill))
+  puts "  [synced] #{skill}"
+end
+
+SkillInstaller.write_manifest(target, manifest)
+SkillInstaller.check_helper_binaries
+puts "[sync-skills] #{SkillInstaller::SKILL_NAMES.size} skills synced into .claude/skills/"

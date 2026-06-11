@@ -218,6 +218,16 @@ Update classifies each skill as missing (copy), identical (skip), outdated (upda
 
 > The gem version is auto-incremented by the `post-merge` git hook when `lib/` files change — do not run `bin/increment_version.rb` manually. Install hooks with `bin/install-hooks`.
 
+### Developing the skills themselves
+
+`config/skills/` is the source of truth for the 11 bundled skills. To make them loadable by Claude while working **on this repo**, they are synced into the repo's own `.claude/skills/` (gitignored — never edit there, edit `config/skills/`):
+
+```bash
+ruby bin/sync-skills        # copy config/skills/* → .claude/skills/* (idempotent)
+```
+
+This runs automatically via git hooks (installed by `bin/install-hooks`): the `post-merge` hook re-syncs whenever a pull touches `config/skills/`, and the `post-checkout` hook syncs on clone or branch switch.
+
 ## Testing
 
 ```bash

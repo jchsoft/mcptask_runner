@@ -13,6 +13,8 @@
 /run today log.pdf
 /log/
 /.claude/test_durations.json
+# Skills synced from config/skills/ by bin/sync-skills (source of truth is config/skills/)
+/.claude/skills/
 /.mcp.json
 # Per-host Claude launcher/model overrides (not for the repo)
 /config/launcher.yml
