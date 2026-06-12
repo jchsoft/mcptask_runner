@@ -86,6 +86,17 @@ module McptaskRunner
           or raise 'account_code not found in CLAUDE.md (expected a line like: "- account_code: `myaccount`")'
       end
 
+      # The runner snapshots the child's TodoWrite list to the mcptask.online dashboard
+      # (SnapshotBuilder todo_list) — without one the card shows no plan/progress detail.
+      def todo_list_instruction
+        <<~INSTRUCTION.strip
+          TODO LIST (MANDATORY):
+          - FIRST action after reading the task: create a todo list (TodoWrite) covering all workflow steps.
+          - Keep it live: mark in_progress when starting an item, completed immediately when done — never batch at the end.
+          - Re-plan the list when scope changes (new urgent bug, extra fixes) instead of working off-list.
+        INSTRUCTION
+      end
+
       def progress_logging_instruction
         <<~INSTRUCTION.strip
           PROGRESS LOGGING (MANDATORY — min 3× LogWorkProgressTool calls during run):

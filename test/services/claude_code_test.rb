@@ -34,6 +34,17 @@ class ClaudeCodeHonestTest < Minitest::Test
     end
   end
 
+  def test_instructions_includes_todo_list_mandate
+    File.stub :exist?, true do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
+        honest = McptaskRunner::ClaudeCode::Honest.new
+        instructions = honest.send(:build_instructions)
+        assert_includes instructions, 'TODO LIST (MANDATORY)'
+        assert_includes instructions, 'TodoWrite'
+      end
+    end
+  end
+
   def test_instructions_includes_git_checkout_main
     File.stub :exist?, true do
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do

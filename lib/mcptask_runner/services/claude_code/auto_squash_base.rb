@@ -254,6 +254,7 @@ module McptaskRunner
       def implementation_steps(start:)
         n = start
         [
+          todo_list_instruction,
           context_optimization_instruction,
           time_awareness_instruction,
           coding_conventions_instruction,

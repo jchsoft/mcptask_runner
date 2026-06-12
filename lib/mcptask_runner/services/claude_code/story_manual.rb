@@ -28,6 +28,8 @@ module McptaskRunner
           [TASK]
           Work on task ##{@task_id} from Story ##{@story_id}.
 
+          #{todo_list_instruction}
+
           #{context_optimization_instruction}
 
           #{time_awareness_instruction}

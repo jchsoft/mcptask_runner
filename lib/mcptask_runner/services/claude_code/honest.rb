@@ -26,6 +26,8 @@ module McptaskRunner
           #{persona_instruction}
           [TASK] Work on next task from: #{fetch_url}. Create PR, run CI. Follow ALL workflow steps.
 
+          #{todo_list_instruction}
+
           #{context_optimization_instruction}
 
           #{time_awareness_instruction}

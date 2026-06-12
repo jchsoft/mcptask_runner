@@ -26,6 +26,8 @@ module McptaskRunner
           [TASK]
           Work on the specific task ##{@task_id}.
 
+          #{todo_list_instruction}
+
           #{context_optimization_instruction}
 
           #{time_awareness_instruction}

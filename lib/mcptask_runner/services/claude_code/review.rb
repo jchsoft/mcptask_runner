@@ -30,6 +30,8 @@ module McptaskRunner
 
       def workflow_section
         <<~WORKFLOW
+          #{todo_list_instruction}
+
           #{time_awareness_instruction}
 
           #{coding_conventions_instruction}
