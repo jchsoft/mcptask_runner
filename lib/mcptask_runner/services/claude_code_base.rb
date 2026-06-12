@@ -264,6 +264,9 @@ module McptaskRunner
       cmd.concat(['-p', instructions, '--model', effective_model_name, '--output-format=stream-json', '--verbose'])
       cmd.concat(['--max-turns', max_turns.to_s]) if max_turns
       cmd << '--permission-mode=bypassPermissions' if accept_edits?
+      # Plan mode waits for interactive approval that never comes in a headless child — the run
+      # hangs until the hung-tool killer fires. Strip the tools so the child can't enter it.
+      cmd.concat(%w[--disallowedTools EnterPlanMode,ExitPlanMode])
       Logger.debug "command: #{cmd.map { |arg| Shellwords.escape(arg) }.join(' ')}"
       cmd
     end

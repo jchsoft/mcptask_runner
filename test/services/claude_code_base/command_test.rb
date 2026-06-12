@@ -31,6 +31,20 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
     assert_includes cmd, 'test instructions'
   end
 
+  # A headless child entering plan mode waits forever for interactive approval — the flag must be
+  # present on every invocation, continue or fresh.
+  def test_build_command_always_disallows_plan_mode_tools
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'genius' }
+
+    [true, false].each do |continue_session|
+      cmd = base.send(:build_command, ['/usr/bin/claude'], 'test instructions', continue_session: continue_session)
+
+      assert_includes cmd, '--disallowedTools'
+      assert_includes cmd, 'EnterPlanMode,ExitPlanMode'
+    end
+  end
+
   def test_build_command_omits_max_turns_when_nil
     base = McptaskRunner::ClaudeCodeBase.new
     base.define_singleton_method(:model_name) { 'genius' }
