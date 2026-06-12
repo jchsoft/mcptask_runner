@@ -9,10 +9,11 @@ module McptaskRunner
       API_OVERLOAD_BASE_WAIT = 60   # base seconds to wait on API overload (doubles each retry)
       RETRY_WAIT_SECONDS = 30
       PRODUCTIVE_STREAM_THRESHOLD = 10 # stream events to consider a run "productive" (resets retry counter)
+      MAX_OVERFLOW_RESTARTS = 1 # fresh-session restarts allowed on context overflow before terminal
 
-      RetryState = Struct.new(:count, :api_overload_count, :marker_retry_mode, keyword_init: true) do
+      RetryState = Struct.new(:count, :api_overload_count, :marker_retry_mode, :overflow_restart_count, :fresh_restart, keyword_init: true) do
         def self.initial
-          new(count: 0, api_overload_count: 0, marker_retry_mode: false)
+          new(count: 0, api_overload_count: 0, marker_retry_mode: false, overflow_restart_count: 0, fresh_restart: false)
         end
       end
 
@@ -21,11 +22,15 @@ module McptaskRunner
       def run_with_retry(start_time)
         loop do
           overload_before = @retry_state.api_overload_count
+          overflow_before = @retry_state.overflow_restart_count
           result = attempt_execution(start_time)
           return result if result
 
           # API overload retries are handled separately with their own counter and backoff
           next if @retry_state.api_overload_count > overload_before
+
+          # Context-overflow fresh restart: own counter, must not burn a normal retry slot
+          next if @retry_state.overflow_restart_count > overflow_before
 
           if @state.stream_line_count >= PRODUCTIVE_STREAM_THRESHOLD
             Logger.info_stdout "[#{@log_tag}] Claude was productive (#{@state.stream_line_count} stream events), resetting retry counter"
@@ -92,12 +97,29 @@ module McptaskRunner
         @state.tool_not_enabled
       end
 
+      # Context overflow is terminal for the bloated session — --continue would reload the same
+      # oversized context and hit the limit again. But the work-in-progress lives on disk (git
+      # branch + commits + logged task progress), so a FRESH session (no --continue) re-discovers
+      # it and continues — the same recovery the next scheduled WorkLoop run would do, just now.
+      # Capped at MAX_OVERFLOW_RESTARTS; a re-overflow after restart means the task is genuinely
+      # too big → terminal.
       def handle_context_overflow(start_time)
         elapsed_hours = ((Time.now - start_time) / 3600.0).round(2)
-        Logger.error "[#{@log_tag}] Context overflow — session unrecoverable after #{elapsed_hours}h, " \
-                     'emitting terminal error (no --continue retry — it would hit the same limit)'
-        error_result("Context overflow after #{elapsed_hours}h — session exceeded token limit, cannot resume with --continue")
-          .merge('reason' => 'context_overflow')
+
+        if @retry_state.overflow_restart_count >= MAX_OVERFLOW_RESTARTS
+          Logger.error "[#{@log_tag}] Context overflow again after fresh restart (#{elapsed_hours}h) — " \
+                       'session unrecoverable, emitting terminal error'
+          return error_result("Context overflow after #{elapsed_hours}h — fresh restart also overflowed, task exceeds token limit")
+            .merge('reason' => 'context_overflow')
+        end
+
+        @retry_state.overflow_restart_count += 1
+        @retry_state.fresh_restart = true
+        @accumulated_output = ''.dup
+        @text_content = ''.dup
+        Logger.warn "[#{@log_tag}] Context overflow after #{elapsed_hours}h — restarting in a FRESH session " \
+                    "(no --continue) to recover on-disk work (restart #{@retry_state.overflow_restart_count}/#{MAX_OVERFLOW_RESTARTS})"
+        nil # Signal to retry with a fresh session
       end
 
       # MCP server disconnected. Snapshot already emitted as :error by

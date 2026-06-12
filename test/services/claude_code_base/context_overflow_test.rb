@@ -155,16 +155,62 @@ class ClaudeCodeBaseContextOverflowTest < Minitest::Test
            'accumulated_output substring must NOT detect — only the @state flag may'
   end
 
-  def test_handle_context_overflow_returns_terminal_error_no_retry
+  # First overflow is recoverable: signal a FRESH-session restart (no --continue) and reset the
+  # carried-over output buffer so the new attempt re-discovers on-disk work instead of dying.
+  def test_handle_context_overflow_first_time_signals_fresh_restart
     base = McptaskRunner::ClaudeCodeBase.new
+    base.instance_variable_set(:@accumulated_output, +'bloated overflowing output')
+    base.instance_variable_set(:@text_content, +'stale text')
+
+    result = base.send(:handle_context_overflow, Time.now - 3600)
+
+    assert_nil result, 'first overflow must return nil to signal a retry'
+    retry_state = base.instance_variable_get(:@retry_state)
+    assert_equal 1, retry_state.overflow_restart_count
+    assert retry_state.fresh_restart, 'must arm a fresh (no --continue) restart'
+    assert_equal 0, retry_state.count, 'must NOT burn a normal retry slot'
+    assert_equal '', base.instance_variable_get(:@accumulated_output), 'must reset accumulated output'
+    assert_equal '', base.instance_variable_get(:@text_content), 'must reset text content'
+  end
+
+  # A re-overflow after the fresh restart means the task genuinely exceeds the limit → terminal.
+  def test_handle_context_overflow_after_restart_returns_terminal_error
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.instance_variable_get(:@retry_state).overflow_restart_count = McptaskRunner::Concerns::RetryHandling::MAX_OVERFLOW_RESTARTS
+
     result = base.send(:handle_context_overflow, Time.now - 3600)
 
     assert_equal 'error', result['status']
     assert_equal 'context_overflow', result['reason']
     assert_match(/Context overflow/, result['message'])
-    assert_match(/cannot resume/, result['message'])
+    assert_match(/fresh restart also overflowed/, result['message'])
     assert_equal 0, base.instance_variable_get(:@retry_state).count,
-                 'Must NOT increment retry counter — session is dead, --continue cannot recover'
+                 'Must NOT increment the normal retry counter on a context-overflow terminal'
+  end
+
+  # A fresh restart must drop --continue even though count>0 would normally request it, and the
+  # flag is consumed (one attempt only) so a later non-overflow failure resumes normally.
+  def test_attempt_execution_fresh_restart_omits_continue_and_consumes_flag
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'sonnet' }
+    base.define_singleton_method(:build_instructions) { 'noop' }
+    base.instance_variable_get(:@retry_state).count = 1 # would normally force --continue
+    base.instance_variable_get(:@retry_state).fresh_restart = true
+
+    base.instance_variable_set(:@accumulated_output, +'')
+    captured = nil
+    capture = ->(_base, _instructions, continue_session: false) { captured = continue_session; [] }
+    base.stub(:build_command, capture) do
+      base.stub(:execute_with_streaming, '') do
+        base.stub(:parse_result, { 'status' => 'success' }) do
+          base.instance_variable_get(:@state).result_received = true
+          base.send(:attempt_execution, Time.now)
+        end
+      end
+    end
+
+    refute captured, 'fresh restart must NOT pass --continue'
+    refute base.instance_variable_get(:@retry_state).fresh_restart, 'fresh_restart flag must be consumed after one attempt'
   end
 
   # Bug fix: TASKRUNNER_RESULT must win over context_overflow / api_overload patterns that
@@ -191,10 +237,32 @@ class ClaudeCodeBaseContextOverflowTest < Minitest::Test
     end
   end
 
-  def test_attempt_execution_emits_context_overflow_terminal_error_when_no_result_received
+  def test_attempt_execution_first_overflow_signals_fresh_restart
     base = McptaskRunner::ClaudeCodeBase.new
     base.define_singleton_method(:model_name) { 'sonnet' }
     base.define_singleton_method(:build_instructions) { 'noop' }
+
+    error_result = { 'status' => 'error', 'message' => 'No TASKRUNNER_RESULT found in output' }
+    base.stub(:resolve_claude_path, '/fake/claude') do
+      base.stub(:execute_with_streaming, '') do
+        base.stub(:parse_result, error_result) do
+          base.instance_variable_set(:@accumulated_output, +'')
+          base.instance_variable_get(:@state).result_received = false
+          base.instance_variable_get(:@state).context_overflow = true # set by JSON-aware streaming detector
+
+          result = base.send(:attempt_execution, Time.now)
+          assert_nil result, 'first overflow signals a fresh restart, not a terminal error'
+          assert base.instance_variable_get(:@retry_state).fresh_restart
+        end
+      end
+    end
+  end
+
+  def test_attempt_execution_emits_context_overflow_terminal_error_after_restart_exhausted
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'sonnet' }
+    base.define_singleton_method(:build_instructions) { 'noop' }
+    base.instance_variable_get(:@retry_state).overflow_restart_count = McptaskRunner::Concerns::RetryHandling::MAX_OVERFLOW_RESTARTS
 
     error_result = { 'status' => 'error', 'message' => 'No TASKRUNNER_RESULT found in output' }
     base.stub(:resolve_claude_path, '/fake/claude') do
