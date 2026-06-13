@@ -23,7 +23,6 @@ module McptaskRunner
         fetch_url = task_fetch_url
 
         <<~INSTRUCTIONS
-          #{persona_instruction}
           [TASK] Work on next task from: #{fetch_url}. Create PR, run CI. Follow ALL workflow steps.
 
           #{todo_list_instruction}
@@ -31,8 +30,6 @@ module McptaskRunner
           #{context_optimization_instruction}
 
           #{time_awareness_instruction}
-
-          #{coding_conventions_instruction}
 
           WORKFLOW:
           #{triaged_git_step(resuming: @resuming)}
@@ -49,19 +46,17 @@ module McptaskRunner
 
           #{run_system_tests_step(step_num: 7)}
 
-          #{refactor_step(step_num: 8)}
+          #{verify_tests_step(step_num: 8)}
 
-          #{verify_tests_step(step_num: 9)}
+          #{push_step(step_num: 9, set_upstream: false)}
 
-          #{push_step(step_num: 10, set_upstream: false)}
+          #{create_pr_step(step_num: 10)}
 
-          #{create_pr_step(step_num: 11)}
+          #{add_screenshots_to_pr_step(step_num: 11)}
 
-          #{add_screenshots_to_pr_step(step_num: 12)}
+          #{run_local_ci_step(step_num: 12, verify_step_ref: 8)}
 
-          #{run_local_ci_step(step_num: 13, verify_step_ref: 9)}
-
-          ⚠️ TASK IS NOT COMPLETE UNTIL LOCAL CI PASSES (step 13)
+          ⚠️ TASK IS NOT COMPLETE UNTIL LOCAL CI PASSES (step 12)
 
           #{result_format_instruction(
             '"status": "success"'

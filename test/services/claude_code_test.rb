@@ -82,7 +82,7 @@ class ClaudeCodeHonestTest < Minitest::Test
         instructions = honest.send(:build_instructions)
         assert_includes instructions, 'CREATE BRANCH'
         assert_includes instructions, 'IMPLEMENT TASK'
-        assert_includes instructions, 'Incremental commits'
+        assert_includes instructions, 'incremental commits'
         assert_includes instructions, 'UNIT TESTS'
         assert_includes instructions, 'SYSTEM TESTS'
         assert_includes instructions, 'PUSH'
@@ -411,11 +411,39 @@ class ClaudeCodeAutoSquashBaseTest < Minitest::Test
     assert McptaskRunner::ClaudeCode::AutoSquashBase < McptaskRunner::ClaudeCodeBase
   end
 
-  def test_implementation_steps_omits_code_review
+  def test_workflow_body_omits_code_review
     obj = McptaskRunner::ClaudeCode::StoryAutoSquash.new(story_id: 1, task_id: 456)
-    steps = obj.send(:implementation_steps, start: 3)
+    steps = obj.send(:workflow_body, start: 3)
     refute_includes steps, 'CODE REVIEW'
     refute_includes steps, '/code-review:code-review'
+  end
+
+  def test_workflow_body_derives_step_numbers_from_start
+    obj = McptaskRunner::ClaudeCode::StoryAutoSquash.new(story_id: 1, task_id: 456)
+    # 9 numbered impl steps → CI at start+9, FINAL OUTPUT at start+10
+    body3 = obj.send(:workflow_body, start: 3)
+    assert_includes body3, '12. CI + AUTO-MERGE'
+    assert_includes body3, '13. FINAL OUTPUT'
+    body4 = obj.send(:workflow_body, start: 4)
+    assert_includes body4, '13. CI + AUTO-MERGE'
+    assert_includes body4, '14. FINAL OUTPUT'
+  end
+
+  def test_auto_squash_status_options_shared_lines
+    obj = McptaskRunner::ClaudeCode::StoryAutoSquash.new(story_id: 1, task_id: 456)
+    opts = obj.send(:auto_squash_status_options, no_more_tasks: nil)
+    %w[success ci_failed merge_failed preexisting_test_errors already_done urgent_bug_pending failure].each do |status|
+      assert_includes opts, %("#{status}")
+    end
+    refute_includes opts, '"no_more_tasks"' # omitted when nil
+    refute_includes opts, 'loop continues to next task' # loop_note defaults false
+  end
+
+  def test_auto_squash_status_options_no_more_tasks_and_loop_note
+    obj = McptaskRunner::ClaudeCode::StoryAutoSquash.new(story_id: 1, task_id: 456)
+    opts = obj.send(:auto_squash_status_options, no_more_tasks: 'no incomplete tasks in the Story', loop_note: true)
+    assert_includes opts, '"no_more_tasks" if no incomplete tasks in the Story'
+    assert_includes opts, 'loop continues to next task'
   end
 end
 
@@ -470,7 +498,6 @@ class ClaudeCodeStoryAutoSquashTest < Minitest::Test
     assert_includes instructions, 'IMPLEMENT TASK'
     assert_includes instructions, 'UNIT TESTS'
     assert_includes instructions, 'SYSTEM TESTS'
-    assert_includes instructions, 'REFACTOR'
     assert_includes instructions, 'PUSH'
     assert_includes instructions, 'CREATE PR'
   end
@@ -595,7 +622,6 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
         assert_includes instructions, 'IMPLEMENT TASK'
         assert_includes instructions, 'UNIT TESTS'
         assert_includes instructions, 'SYSTEM TESTS'
-        assert_includes instructions, 'REFACTOR'
         assert_includes instructions, 'PUSH'
         assert_includes instructions, 'CREATE PR'
       end
@@ -744,7 +770,6 @@ class ClaudeCodeStoryManualTest < Minitest::Test
     assert_includes instructions, 'IMPLEMENT TASK'
     assert_includes instructions, 'UNIT TESTS'
     assert_includes instructions, 'SYSTEM TESTS'
-    assert_includes instructions, 'REFACTOR'
     assert_includes instructions, 'PUSH'
     assert_includes instructions, 'CREATE PR'
   end
@@ -856,7 +881,6 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
         assert_includes instructions, 'IMPLEMENT TASK'
         assert_includes instructions, 'UNIT TESTS'
         assert_includes instructions, 'SYSTEM TESTS'
-        assert_includes instructions, 'REFACTOR'
         assert_includes instructions, 'PUSH'
         assert_includes instructions, 'CREATE PR'
       end
@@ -1013,7 +1037,6 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
         assert_includes instructions, 'IMPLEMENT TASK'
         assert_includes instructions, 'UNIT TESTS'
         assert_includes instructions, 'SYSTEM TESTS'
-        assert_includes instructions, 'REFACTOR'
         assert_includes instructions, 'PUSH'
         assert_includes instructions, 'CREATE PR'
       end
@@ -1118,8 +1141,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         once_auto_squash = McptaskRunner::ClaudeCode::OnceAutoSquash.new
         instructions = once_auto_squash.send(:build_instructions)
-        assert_includes instructions, 'TIME MANAGEMENT'
-        assert_includes instructions, '20 min inactive'
+        assert_includes instructions, '>70 min elapsed'
       end
     end
   end
@@ -1131,8 +1153,7 @@ class TimeAwarenessInstructionsTest < Minitest::Test
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::TodayAutoSquash.new
         instructions = obj.send(:build_instructions)
-        assert_includes instructions, 'TIME MANAGEMENT'
-        assert_includes instructions, '20 min inactive'
+        assert_includes instructions, '>70 min elapsed'
       end
     end
   end
@@ -1142,8 +1163,7 @@ class TimeAwarenessInstructionsTest < Minitest::Test
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::QueueAutoSquash.new
         instructions = obj.send(:build_instructions)
-        assert_includes instructions, 'TIME MANAGEMENT'
-        assert_includes instructions, '20 min inactive'
+        assert_includes instructions, '>70 min elapsed'
       end
     end
   end
@@ -1151,8 +1171,7 @@ class TimeAwarenessInstructionsTest < Minitest::Test
   def test_story_auto_squash_instructions_includes_time_management
     obj = McptaskRunner::ClaudeCode::StoryAutoSquash.new(story_id: 123, task_id: 456)
     instructions = obj.send(:build_instructions)
-    assert_includes instructions, 'TIME MANAGEMENT'
-    assert_includes instructions, '20 min inactive'
+    assert_includes instructions, '>70 min elapsed'
   end
 
   def test_honest_instructions_includes_time_management
@@ -1160,8 +1179,7 @@ class TimeAwarenessInstructionsTest < Minitest::Test
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::Honest.new
         instructions = obj.send(:build_instructions)
-        assert_includes instructions, 'TIME MANAGEMENT'
-        assert_includes instructions, '20 min inactive'
+        assert_includes instructions, '>70 min elapsed'
       end
     end
   end
@@ -1169,15 +1187,13 @@ class TimeAwarenessInstructionsTest < Minitest::Test
   def test_review_instructions_includes_time_management
     obj = McptaskRunner::ClaudeCode::Review.new
     instructions = obj.send(:build_instructions)
-    assert_includes instructions, 'TIME MANAGEMENT'
-    assert_includes instructions, '20 min inactive'
+    assert_includes instructions, '>70 min elapsed'
   end
 
   def test_story_manual_instructions_includes_time_management
     obj = McptaskRunner::ClaudeCode::StoryManual.new(story_id: 123, task_id: 456)
     instructions = obj.send(:build_instructions)
-    assert_includes instructions, 'TIME MANAGEMENT'
-    assert_includes instructions, '20 min inactive'
+    assert_includes instructions, '>70 min elapsed'
   end
 
   def test_dry_instructions_does_not_include_time_management
@@ -1185,7 +1201,7 @@ class TimeAwarenessInstructionsTest < Minitest::Test
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         obj = McptaskRunner::ClaudeCode::Dry.new
         instructions = obj.send(:build_instructions)
-        refute_includes instructions, 'TIME MANAGEMENT'
+        refute_includes instructions, '>70 min elapsed'
       end
     end
   end
@@ -1240,7 +1256,6 @@ class ClaudeCodeTaskManualTest < Minitest::Test
     assert_includes instructions, 'IMPLEMENT TASK'
     assert_includes instructions, 'UNIT TESTS'
     assert_includes instructions, 'SYSTEM TESTS'
-    assert_includes instructions, 'REFACTOR'
     assert_includes instructions, 'PUSH'
     assert_includes instructions, 'CREATE PR'
   end
@@ -1343,7 +1358,6 @@ class ClaudeCodeTaskAutoSquashTest < Minitest::Test
     assert_includes instructions, 'IMPLEMENT TASK'
     assert_includes instructions, 'UNIT TESTS'
     assert_includes instructions, 'SYSTEM TESTS'
-    assert_includes instructions, 'REFACTOR'
     assert_includes instructions, 'PUSH'
     assert_includes instructions, 'CREATE PR'
   end

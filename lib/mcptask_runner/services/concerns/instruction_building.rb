@@ -28,21 +28,6 @@ module McptaskRunner
         end
       end
 
-      def coding_conventions_instruction
-        <<~INSTRUCTION.strip
-          CODING CONVENTIONS (MANDATORY):
-          - GIT COMMITS: NEVER use $() in commit messages. Plain quoted strings:
-            ✅ git commit -m "Fix login validation for empty emails"
-            ❌ git commit -m "$(echo 'Fix login')"
-            Multi-line → heredoc:
-            git commit -m "$(cat <<'EOF'
-            Your message here.
-            EOF
-            )"
-          - RUBOCOP BEFORE CI: git diff --name-only main -- '*.rb' | xargs rubocop -a
-        INSTRUCTION
-      end
-
       def result_format_instruction(json_fields, extra_rules: [])
         rules = [
           'JSON inside ```json code block',
@@ -66,10 +51,6 @@ module McptaskRunner
         INSTRUCTION
       end
 
-      def persona_instruction
-        '[PERSONA] Senior Ruby on Rails dev. Follow RubyWay.'
-      end
-
       def task_fetch_url
         if @task_id
           "mcptask://pieces/#{account_code}/#{@task_id}"
@@ -90,10 +71,7 @@ module McptaskRunner
       # (SnapshotBuilder todo_list) — without one the card shows no plan/progress detail.
       def todo_list_instruction
         <<~INSTRUCTION.strip
-          TODO LIST (MANDATORY):
-          - FIRST action after reading the task: create a todo list (TodoWrite) covering all workflow steps.
-          - Keep it live: mark in_progress when starting an item, completed immediately when done — never batch at the end.
-          - Re-plan the list when scope changes (new urgent bug, extra fixes) instead of working off-list.
+          TODO LIST (MANDATORY): keep a live TodoWrite list of the workflow steps (in_progress/completed as you go) — the runner mirrors it to the dashboard.
         INSTRUCTION
       end
 
@@ -113,32 +91,11 @@ module McptaskRunner
 
       def context_optimization_instruction
         <<~INSTRUCTION.strip
-          CONTEXT OPTIMIZATION (MANDATORY):
-          - Call independent tools in parallel (Read/Grep/Glob in one turn)
-          - CodeGraph/LSP BEFORE Read/Grep for exploration
-          - If CodeGraph unavailable, LSP as primary:
-            * documentSymbol — file structure
-            * findReferences — callers
-            * definition — jump to def
-            * incomingCalls — call graph
-          - Never re-read same file >2×. Use offset+limit for re-reads.
-
-          PATIENCE & CONTEXT BURN (MANDATORY):
-          - Long waits (CI, system tests, other Claude agent) → be patient. No polling loops,
-            no repeated status checks, no retries "just to see". Each poll re-sends full history.
-          - Large files / logs → never Read whole. Size first (wc -l), then tail/grep/offset+limit.
-          - Never repeat the same operation hoping for different result. One failure = diagnose, not retry.
-
-          OUTPUT EFFICIENCY (MANDATORY — saves ~65% tokens):
-          - Drop filler: just/really/basically/actually/simply/certainly
-          - Drop pleasantries: "Sure!"/"Happy to help"/"Let me..."/"I'll proceed to..."
-          - No hedging: maybe/perhaps/might be worth
-          - Short fragments. Pattern: [thing] [action] [reason].
-          - NEVER explain what you're about to do — do it. Never narrate tool calls.
-          - NEVER summarize what you did — user sees diff.
-          - Technical terms exact. Code blocks unchanged. Errors quoted exact.
-          - TASKRUNNER_RESULT JSON unchanged — rules apply to natural language only.
-          - ALWAYS respond in English — even when task description is in Czech or other language.
+          EXPLORATION & OUTPUT (MANDATORY):
+          - Explore with CodeGraph/LSP directly — skip the /discover, /memory-search skill wrappers (unreliable in this context). Call independent tools in parallel; never re-read a file already read.
+          - Don't poll/retry in loops (each poll re-sends full history); size large files/logs before reading.
+          - Be terse: no narration, no summaries of what you did (the user sees the diff). TASKRUNNER_RESULT JSON unchanged.
+          - ALWAYS respond in English — even when the task description is in Czech or another language.
         INSTRUCTION
       end
 
@@ -159,11 +116,7 @@ module McptaskRunner
 
       def time_awareness_instruction
         <<~INSTRUCTION.strip
-          TIME MANAGEMENT (CRITICAL):
-          - Target: 90 min. Kill: 20 min inactive (no stream output).
-          - Producing output = safe.
-          - >70 min elapsed → SKIP full tests/CI. Run targeted tests only → TASKRUNNER_RESULT.
-          - ALWAYS output TASKRUNNER_RESULT when done.
+          TIME: >70 min elapsed → SKIP full tests/CI, run targeted tests only, then emit TASKRUNNER_RESULT. ALWAYS output TASKRUNNER_RESULT when done.
         INSTRUCTION
       end
     end

@@ -18,44 +18,25 @@ module McptaskRunner
 
       private
 
-      def build_instructions
-        <<~INSTRUCTIONS
-          #{persona_instruction}
+      def task_description
+        "Work on task ##{@task_id} from Story ##{@story_id} with AUTOMATIC PR merge after CI passes."
+      end
 
-          [TASK]
-          Work on task ##{@task_id} from Story ##{@story_id} with AUTOMATIC PR merge after CI passes.
+      # Story discovery occupies steps 1-2, the git step is 3, so implementation starts at 4.
+      def workflow_preamble
+        "#{story_task_discovery_steps(story_id: @story_id, task_id: @task_id, skip_story_load: @skip_story_load)}\n\n" \
+          "3. GIT: git checkout main && git pull"
+      end
 
-          WORKFLOW:
-          #{story_task_discovery_steps(story_id: @story_id, task_id: @task_id, skip_story_load: @skip_story_load)}
+      def impl_start = 4
 
-          3. GIT: git checkout main && git pull
+      def result_json_fields
+        %("status": "success", "pr_number": N, "branch_name": "...", "story_id": #{@story_id}, "task_id": Z)
+      end
 
-          #{implementation_steps(start: 4)}
-          #{ci_run_and_merge_step(step_num: 14, next_step: 15)}
-          15. FINAL OUTPUT: Generate the result JSON
-
-          AUTO-SQUASH: PR auto-merged after CI. CI fails 2× → PR stays open.
-
-          #{result_format_instruction(
-            %("status": "success", "pr_number": N, "branch_name": "...", "story_id": #{@story_id}, "task_id": Z),
-            extra_rules: ['pr_number + branch_name REQUIRED whenever PR was created (success / ci_failed / merge_failed / preexisting_test_errors)']
-          )}
-
-          #{auto_squash_progress_logging_instruction}
-
-          task_id: relative_id of the task you worked on
-          Set status:
-             - "success" if task completed AND `gh pr view <pr_number> --json state --jq .state` returns `MERGED`
-             - "no_more_tasks" if no incomplete tasks in the Story
-             - "ci_failed" if CI failed after retry (PR stays open)
-             - "merge_failed" if `gh pr merge` itself errored (branch protection, conflicts, etc.)
-             - "preexisting_test_errors" if tests were already failing before your changes (urgent bug task created)
-             - "already_done" if task already resolved (no code changes needed — e.g. fixed in earlier commit);
-                 MUST log final progress at 100% naming the resolving commit SHA, so triage does not re-pick;
-                 loop continues to next task
-             #{urgent_bug_pending_status_option}
-             - "failure" for other errors
-        INSTRUCTIONS
+      def status_block
+        "task_id: relative_id of the task you worked on\n" \
+          "#{auto_squash_status_options(no_more_tasks: 'no incomplete tasks in the Story', loop_note: true)}"
       end
     end
   end
