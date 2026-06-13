@@ -137,7 +137,7 @@ module McptaskRunner
       title_suffix = no_merge_warning ? ' (NO MERGE!)' : ''
       lines = []
       lines << "#{step_num}. CREATE PR:#{title_suffix}"
-      lines << "#{s}- Use .github/pull_request_template.md if exists"
+      lines << "#{s}- Use skill or .github/pull_request_template.md if exists"
       lines << "#{s}- Clear summary + mcptask.online task link"
       lines << "#{s}- Do NOT merge — human review only" if no_merge_warning
       lines << "#{s}- Auto-merge after CI passes" if auto_merge_note
