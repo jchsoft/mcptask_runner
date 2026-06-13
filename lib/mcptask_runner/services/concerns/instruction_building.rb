@@ -82,7 +82,7 @@ module McptaskRunner
           - Milestones (minimum cadence, bump progress_percent each time):
             a) After branch created + task understood → ~20%
             b) After implementation + unit tests pass → ~60%
-            c) After PR/CI done → 100%
+            c) After PR/CI done → 90%
           - Each call: duration_minutes = minutes since previous call (not cumulative);
             description = what was done since last log.
           - More calls OK for long tasks; 3× is floor, not target.
