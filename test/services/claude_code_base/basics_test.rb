@@ -56,7 +56,7 @@ class ClaudeCodeBaseBasicsTest < Minitest::Test
   end
 
   def test_heartbeat_interval_constant_is_defined
-    assert_equal 120, McptaskRunner::ClaudeCodeBase::HEARTBEAT_INTERVAL
+    assert_equal 30, McptaskRunner::ClaudeCodeBase::HEARTBEAT_INTERVAL
   end
 
   def test_process_kill_timeout_constant_is_defined

@@ -13,7 +13,7 @@ module McptaskRunner
     # - mid-task quota crossing → :error then SIGTERM
     module HeartbeatMonitoring
       INACTIVITY_TIMEOUT = 1200 # 20 minutes - kill only if stream_line_count stops changing
-      HEARTBEAT_INTERVAL = 120 # 2 minutes between heartbeat messages
+      HEARTBEAT_INTERVAL = 30 # 30 seconds between heartbeat messages
       FROZEN_WARN_THRESHOLD = 180 # 3 minutes — soft warn: stream stuck (no active tools); status=frozen
       # How long the stream must be quiet (no new lines) before hung-tool warn/kill may fire.
       # Without this gate, an orphan tool entry (Claude Code occasionally never emits tool_result
