@@ -13,15 +13,10 @@ module McptaskRunner
 
       def build_instructions
         [
-          persona_section,
           task_section,
           workflow_section,
           output_format_section
         ].join("\n")
-      end
-
-      def persona_section
-        persona_instruction
       end
 
       def task_section
@@ -33,8 +28,6 @@ module McptaskRunner
           #{todo_list_instruction}
 
           #{time_awareness_instruction}
-
-          #{coding_conventions_instruction}
 
           WORKFLOW:
           #{git_state_check_step}

@@ -6,8 +6,7 @@ class ClaudeCodeBaseInstructionsTest < Minitest::Test
   def test_time_awareness_instruction_returns_string
     base = McptaskRunner::ClaudeCodeBase.new
     instruction = base.send(:time_awareness_instruction)
-    assert_includes instruction, 'TIME MANAGEMENT'
-    assert_includes instruction, '20 min inactive'
+    assert_includes instruction, '>70 min elapsed'
     assert_includes instruction, 'TASKRUNNER_RESULT'
   end
 

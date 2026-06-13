@@ -136,54 +136,69 @@ module McptaskRunner
         INSTRUCTIONS
       end
 
-      # Builds complete instructions for @next-based auto-squash runners (once/queue/today).
-      # Subclasses only need to provide task_description and workflow_notice strings.
-      def build_next_task_instructions(task_description:, workflow_notice:)
-        project_relative_id or raise 'project_relative_id not found in CLAUDE.md'
-        fetch_url = task_fetch_url
+      AUTO_SQUASH_NOTICE = 'AUTO-SQUASH: PR auto-merged after CI. CI fails 2× → PR stays open.'
+      PR_FIELDS_RULE = 'pr_number + branch_name REQUIRED whenever PR was created ' \
+                       '(success / ci_failed / merge_failed / preexisting_test_errors)'
 
+      # Template shared by every auto-squash variant. Subclasses override only the small hooks
+      # below (task_description / workflow_preamble / impl_start / workflow_notice /
+      # result_json_fields / status_block); all structure lives here so the five variants stay
+      # in lockstep.
+      def build_instructions
         <<~INSTRUCTIONS
-          #{persona_instruction}
-
           [TASK]
           #{task_description}
 
           WORKFLOW:
-          #{triaged_git_step(resuming: @resuming)}
+          #{workflow_preamble}
 
-          #{task_fetch_step(step_num: 2, fetch_url: fetch_url)}
-
-          #{implementation_steps(start: 3)}
-          #{ci_run_and_merge_step(step_num: 13, next_step: 14)}
-          14. FINAL OUTPUT: Generate the result JSON
+          #{workflow_body(start: impl_start)}
 
           #{workflow_notice}
 
-          #{result_format_instruction(
-            '"status": "success", "pr_number": N, "branch_name": "..."',
-            extra_rules: ['pr_number + branch_name REQUIRED whenever PR was created (success / ci_failed / merge_failed / preexisting_test_errors)']
-          )}
+          #{result_format_instruction(result_json_fields, extra_rules: [PR_FIELDS_RULE])}
 
           #{auto_squash_progress_logging_instruction}
 
-          Set status:
-             #{next_task_auto_squash_status_options}
+          #{status_block}
         INSTRUCTIONS
       end
 
-      def next_task_auto_squash_status_options
-        <<~STATUS.strip
-          - "success" if task completed AND `gh pr view <pr_number> --json state --jq .state` returns `MERGED`
-          - "no_more_tasks" if no tasks available (mcptask returns "No available tasks found")
-          - "ci_failed" if CI failed after retry (PR stays open)
-          - "merge_failed" if `gh pr merge` itself errored (branch protection, conflicts, etc.)
-          - "preexisting_test_errors" if tests were already failing before your changes (urgent bug task created)
-          - "already_done" if task already resolved (no code changes needed — e.g. fixed in earlier commit / fix branch is empty);
-              MUST log final progress at 100% with description explaining which prior commit resolved it,
-              so triage does not re-pick the same task; loop continues to next task
-          #{urgent_bug_pending_status_option}
-          - "failure" for other errors
-        STATUS
+      # --- variant hooks (defaults here; subclasses override what differs) ---
+      def impl_start = 3
+      def workflow_notice = AUTO_SQUASH_NOTICE
+
+      def task_description
+        raise NotImplementedError, "#{self.class} must implement task_description"
+      end
+
+      def workflow_preamble
+        raise NotImplementedError, "#{self.class} must implement workflow_preamble"
+      end
+
+      def result_json_fields
+        raise NotImplementedError, "#{self.class} must implement result_json_fields"
+      end
+
+      def status_block
+        raise NotImplementedError, "#{self.class} must implement status_block"
+      end
+
+      # Single source for the auto-squash status enum. `no_more_tasks` text varies per variant
+      # (nil omits the line for fixed-task runners); `loop_note` appends the loop-continuation
+      # hint to already_done for the queue/today/story loops.
+      def auto_squash_status_options(no_more_tasks: nil, loop_note: false)
+        loop_hint = loop_note ? ', so triage does not re-pick the same task; loop continues to next task' : ''
+        lines = ['- "success" if task completed AND `gh pr view <pr_number> --json state --jq .state` returns `MERGED`']
+        lines << %(- "no_more_tasks" if #{no_more_tasks}) if no_more_tasks
+        lines << '- "ci_failed" if CI failed after retry (PR stays open)'
+        lines << '- "merge_failed" if `gh pr merge` itself errored (branch protection, conflicts, etc.)'
+        lines << '- "preexisting_test_errors" if tests were already failing before your changes (urgent bug task created)'
+        lines << '- "already_done" if task already resolved (no code changes needed — e.g. fixed in earlier commit / fix branch is empty); ' \
+                 "MUST log final progress at 100% naming the resolving commit SHA#{loop_hint}"
+        lines << urgent_bug_pending_status_option
+        lines << '- "failure" for other errors'
+        "Set status:\n#{lines.join("\n")}"
       end
 
       # Autosquash variant of progress_logging_instruction. Same milestones but 100% is gated
@@ -248,28 +263,33 @@ module McptaskRunner
         n.empty? ? nil : n.to_i
       end
 
-      # Returns shared implementation steps from CREATE BRANCH through CODE REVIEW.
-      # All four auto-squash files run these identical steps; only the starting step
-      # number differs (today/once/queue start at 3, story starts at 4).
-      def implementation_steps(start:)
-        n = start
-        [
+      # Instruction blocks + numbered implementation steps + CI/merge + final-output line.
+      # Step numbers derive from the step count, so adding/removing a step renumbers everything
+      # downstream automatically. today/once/queue/task start at 3, story starts at 4.
+      def workflow_body(start:)
+        steps = [
           todo_list_instruction,
           context_optimization_instruction,
           time_awareness_instruction,
-          coding_conventions_instruction,
           preexisting_test_errors_instruction,
-          create_branch_step(step_num: n),
-          implement_task_step(step_num: n + 1),
-          run_unit_tests_step(step_num: n + 2),
-          compile_test_assets_step(step_num: n + 3),
-          run_system_tests_step(step_num: n + 4),
-          refactor_step(step_num: n + 5),
-          verify_tests_step(step_num: n + 6),
-          push_step(step_num: n + 7),
-          create_pr_step(step_num: n + 8, auto_merge_note: true),
-          skip_screenshots_step(step_num: n + 9)
-        ].join("\n\n")
+          create_branch_step(step_num: start),
+          implement_task_step(step_num: start + 1),
+          run_unit_tests_step(step_num: start + 2),
+          compile_test_assets_step(step_num: start + 3),
+          run_system_tests_step(step_num: start + 4),
+          verify_tests_step(step_num: start + 5),
+          push_step(step_num: start + 6),
+          create_pr_step(step_num: start + 7, auto_merge_note: true),
+          skip_screenshots_step(step_num: start + 8)
+        ]
+        ci_step = start + 9
+        final_step = ci_step + 1
+        <<~BODY.strip
+          #{steps.join("\n\n")}
+
+          #{ci_run_and_merge_step(step_num: ci_step, next_step: final_step)}
+          #{final_step}. FINAL OUTPUT: Generate the result JSON
+        BODY
       end
 
       # Returns the full CI run-and-auto-merge step.

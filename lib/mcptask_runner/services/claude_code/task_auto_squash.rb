@@ -15,41 +15,20 @@ module McptaskRunner
 
       private
 
-      def build_instructions
-        <<~INSTRUCTIONS
-          #{persona_instruction}
+      def task_description
+        "Work on the specific task ##{@task_id} with AUTOMATIC PR merge after CI passes."
+      end
 
-          [TASK]
-          Work on the specific task ##{@task_id} with AUTOMATIC PR merge after CI passes.
+      def workflow_preamble
+        "#{triaged_git_step(resuming: @resuming)}\n\n#{load_task_step(step_num: 2, task_id: @task_id)}"
+      end
 
-          WORKFLOW:
-          #{triaged_git_step(resuming: @resuming)}
+      def result_json_fields
+        %("status": "success", "pr_number": N, "branch_name": "...", "task_id": #{@task_id})
+      end
 
-          #{load_task_step(step_num: 2, task_id: @task_id)}
-
-          #{implementation_steps(start: 3)}
-          #{ci_run_and_merge_step(step_num: 13, next_step: 14)}
-          14. FINAL OUTPUT: Generate the result JSON
-
-          AUTO-SQUASH: PR auto-merged after CI. CI fails 2× → PR stays open.
-
-          #{result_format_instruction(
-            %("status": "success", "pr_number": N, "branch_name": "...", "task_id": #{@task_id}),
-            extra_rules: ['pr_number + branch_name REQUIRED whenever PR was created (success / ci_failed / merge_failed / preexisting_test_errors)']
-          )}
-
-          #{auto_squash_progress_logging_instruction}
-
-          Set status:
-             - "success" if task completed AND `gh pr view <pr_number> --json state --jq .state` returns `MERGED`
-             - "ci_failed" if CI failed after retry (PR stays open)
-             - "merge_failed" if `gh pr merge` itself errored (branch protection, conflicts, etc.)
-             - "preexisting_test_errors" if tests were already failing before your changes (urgent bug task created)
-             - "already_done" if task already resolved (no code changes needed — e.g. fixed in earlier commit);
-                 MUST log final progress at 100% naming the resolving commit SHA
-             #{urgent_bug_pending_status_option}
-             - "failure" for other errors
-        INSTRUCTIONS
+      def status_block
+        auto_squash_status_options(no_more_tasks: nil)
       end
     end
   end

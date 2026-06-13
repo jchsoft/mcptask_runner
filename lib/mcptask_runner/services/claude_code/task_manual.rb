@@ -21,8 +21,6 @@ module McptaskRunner
 
       def build_instructions
         <<~INSTRUCTIONS
-          #{persona_instruction}
-
           [TASK]
           Work on the specific task ##{@task_id}.
 
@@ -31,8 +29,6 @@ module McptaskRunner
           #{context_optimization_instruction}
 
           #{time_awareness_instruction}
-
-          #{coding_conventions_instruction}
 
           WORKFLOW:
           #{triaged_git_step(resuming: @resuming)}
@@ -49,17 +45,15 @@ module McptaskRunner
 
           #{run_system_tests_step(step_num: 7)}
 
-          #{refactor_step(step_num: 8)}
+          #{verify_tests_step(step_num: 8)}
 
-          #{verify_tests_step(step_num: 9)}
+          #{push_step(step_num: 9)}
 
-          #{push_step(step_num: 10)}
+          #{create_pr_step(step_num: 10, no_merge_warning: true)}
 
-          #{create_pr_step(step_num: 11, no_merge_warning: true)}
+          #{add_screenshots_to_pr_step(step_num: 11)}
 
-          #{add_screenshots_to_pr_step(step_num: 12)}
-
-          #{run_local_ci_step(step_num: 13, verify_step_ref: 9)}
+          #{run_local_ci_step(step_num: 12, verify_step_ref: 8)}
 
           MANUAL workflow — PR created, NOT merged. Human reviews.
 

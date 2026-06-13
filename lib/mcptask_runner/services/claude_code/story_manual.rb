@@ -23,8 +23,6 @@ module McptaskRunner
 
       def build_instructions
         <<~INSTRUCTIONS
-          #{persona_instruction}
-
           [TASK]
           Work on task ##{@task_id} from Story ##{@story_id}.
 
@@ -33,8 +31,6 @@ module McptaskRunner
           #{context_optimization_instruction}
 
           #{time_awareness_instruction}
-
-          #{coding_conventions_instruction}
 
           WORKFLOW:
           #{story_task_discovery_steps(story_id: @story_id, task_id: @task_id, skip_story_load: @skip_story_load)}
@@ -51,17 +47,15 @@ module McptaskRunner
 
           #{run_system_tests_step(step_num: 8)}
 
-          #{refactor_step(step_num: 9)}
+          #{verify_tests_step(step_num: 9)}
 
-          #{verify_tests_step(step_num: 10)}
+          #{push_step(step_num: 10)}
 
-          #{push_step(step_num: 11)}
+          #{create_pr_step(step_num: 11, no_merge_warning: true)}
 
-          #{create_pr_step(step_num: 12, no_merge_warning: true)}
+          #{add_screenshots_to_pr_step(step_num: 12)}
 
-          #{add_screenshots_to_pr_step(step_num: 13)}
-
-          #{run_local_ci_step(step_num: 14, verify_step_ref: 10)}
+          #{run_local_ci_step(step_num: 13, verify_step_ref: 9)}
 
           MANUAL: PR created, NOT merged. Human reviews.
 

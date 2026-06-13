@@ -80,12 +80,7 @@ module McptaskRunner
     end
 
     def implement_task_step(step_num:)
-      s = step_indent(step_num)
-      <<~STEP.strip
-        #{step_num}. IMPLEMENT TASK:
-        #{s}- Follow CLAUDE.md rules
-        #{s}- Incremental commits, clear messages
-      STEP
+      "#{step_num}. IMPLEMENT TASK (incremental commits, clear messages)"
     end
 
     def run_unit_tests_step(step_num:)
@@ -124,14 +119,6 @@ module McptaskRunner
       STEP
     end
 
-    def refactor_step(step_num:)
-      s = step_indent(step_num)
-      <<~STEP.strip
-        #{step_num}. REFACTOR: Read `~/.claude/rules/ruby-rails.md`, apply RoR rules
-        #{s}- Commit refactoring changes
-      STEP
-    end
-
     def verify_tests_step(step_num:)
       s = step_indent(step_num)
       <<~STEP.strip
@@ -167,16 +154,6 @@ module McptaskRunner
 
     def skip_screenshots_step(step_num:)
       "#{step_num}. SKIP screenshots (autosquash)"
-    end
-
-    def code_review_step(step_num:)
-      s = step_indent(step_num)
-      <<~STEP.strip
-        #{step_num}. CODE REVIEW:
-        #{s}- SKIP if changes only touch test files
-        #{s}- Invoke /code-review:code-review
-        #{s}- If issues: fix, commit, push, re-review. Repeat until clean.
-      STEP
     end
 
     def preexisting_test_errors_instruction
