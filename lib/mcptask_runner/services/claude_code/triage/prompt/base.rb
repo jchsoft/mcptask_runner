@@ -40,6 +40,16 @@ module McptaskRunner
               #{status_entries}
             INSTRUCTION
           end
+
+          # Canonical MCP-fetch directive, shared by every triage prompt step that loads a piece.
+          def mcp_fetch(uri)
+            %(INVOKE ReadMcpResourceTool with server="mcptask-online", uri="#{uri}" — DIRECT MCP. Do NOT use /mcptask-read skill.)
+          end
+
+          # Safety note appended after the first fetch in each prompt.
+          def mcp_safety_note
+            'NEVER use Bash/curl/Net::HTTP — API uses internal id (not relative_id), returns WRONG piece. On MCP failure: STOP, emit error status.'
+          end
         end
       end
     end

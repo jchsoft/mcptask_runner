@@ -18,14 +18,14 @@ module McptaskRunner
               OUTPUT ONLY JSON. No explanations, no commentary.
 
               STEP 1 - LOAD STORY:
-              1. INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{@story_id}" — DIRECT MCP. Do NOT use /mcptask-read skill.
+              1. #{mcp_fetch("mcptask://pieces/#{account_code}/#{@story_id}")}
               2. Find subtasks
               3. First task: NOT "Schváleno"/"Hotovo?", progress<100
               4. None found → status "no_more_tasks", recommended_model="genius"
               5. Remember task relative_id
-              NEVER use Bash/curl/Net::HTTP — API uses internal id (not relative_id), returns WRONG piece. On MCP failure: STOP, emit error status.
+              #{mcp_safety_note}
 
-              STEP 2 - FETCH TASK: INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/<task_relative_id>" — DIRECT MCP, NOT /mcptask-read skill.
+              STEP 2 - FETCH TASK: #{mcp_fetch("mcptask://pieces/#{account_code}/<task_relative_id>")}
 
               STEP 3 - ANALYZE: Read title, description, piece_type, attachment filenames (no downloads). Apply model rules below.
 
