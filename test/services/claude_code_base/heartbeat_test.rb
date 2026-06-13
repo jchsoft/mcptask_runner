@@ -228,7 +228,7 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
     builder.set_status(:processing)
     now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     builder.instance_variable_get(:@active_actions)["t1"] = {
-      name: "Bash", summary: "", mono_started_at: now - 1600, # > HUNG_TOOL_KILL_LONG (1500)
+      name: "Bash", summary: "", mono_started_at: now - 2800, # > long kill ceiling (2700)
       started_at: Time.now.utc.iso8601(3)
     }
 
@@ -268,7 +268,7 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
     builder.set_status(:processing)
     now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     builder.instance_variable_get(:@active_actions)["t1"] = {
-      name: "Bash", summary: "", mono_started_at: now - 600, # < 1500 long kill
+      name: "Bash", summary: "", mono_started_at: now - 600, # < 2700 long kill
       started_at: Time.now.utc.iso8601(3)
     }
 
@@ -286,7 +286,7 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
     builder.set_status(:processing)
     now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     builder.instance_variable_get(:@active_actions)["stale_skill"] = {
-      name: "Skill", summary: "ci-wait", mono_started_at: now - 1600,
+      name: "Skill", summary: "ci-wait", mono_started_at: now - 2800, # past the 2700 long kill ceiling
       started_at: Time.now.utc.iso8601(3)
     }
 
@@ -370,7 +370,82 @@ class ClaudeCodeBaseHeartbeatTest < Minitest::Test
   end
 
   def test_absolute_silence_kill_constant_is_defined
-    assert_equal 1800, McptaskRunner::ClaudeCodeBase::ABSOLUTE_SILENCE_KILL
+    assert_equal 3000, McptaskRunner::ClaudeCodeBase::ABSOLUTE_SILENCE_KILL
+  end
+
+  # Regression (StoryAutoSquash incident): once status is already :error, the hung-tool kill must
+  # still complete. Previously set_status(:error) raised "error → error", aborting before
+  # terminate_for_inactivity — so the subprocess was never SIGTERMed and the loop re-logged
+  # "killing subprocess" + the transition error every 30s indefinitely.
+  def test_terminate_for_hung_tool_if_dead_completes_kill_when_already_error
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    builder.set_status(:error, error_message: "earlier failure")
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    builder.instance_variable_get(:@active_actions)["t1"] = {
+      name: "Skill", summary: "ci-wait", mono_started_at: now - 2800, started_at: Time.now.utc.iso8601(3)
+    }
+
+    base.stub(:kill_process, nil) do
+      base.stub(:release_test_lock, nil) do
+        base.stub(:write_debug_dump, nil) do
+          McptaskRunner::EventStream.stub(:emit_snapshot, nil) do
+            assert base.send(:terminate_for_hung_tool_if_dead, now, "", 300)
+          end
+        end
+      end
+    end
+
+    assert_equal "error", builder.status
+    assert base.instance_variable_get(:@state).stopping, "kill must complete even when already error"
+    assert base.instance_variable_get(:@state).inactivity_timeout
+  end
+
+  # Orphan tool: a stale Skill entry past its kill ceiling (Claude Code never emitted its
+  # tool_result) must NOT trigger a kill while a newer tool — the work Claude is actually doing —
+  # is young. Liveness is judged by the newest active tool, not the oldest stale one.
+  def test_terminate_for_hung_tool_if_dead_ignores_orphan_when_newer_tool_is_young
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+    builder.set_status(:processing)
+    now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    actions = builder.instance_variable_get(:@active_actions)
+    actions["orphan_skill"] = { name: "Skill", summary: "ci-runner", mono_started_at: now - 3163, started_at: Time.now.utc.iso8601(3) }
+    actions["live_bash"] = { name: "Bash", summary: "current work", mono_started_at: now - 22, started_at: Time.now.utc.iso8601(3) }
+
+    refute base.send(:terminate_for_hung_tool_if_dead, now, "", 300),
+           "orphan past ceiling must not kill while a newer tool proves Claude alive"
+    assert_equal "processing", builder.status
+    refute base.instance_variable_get(:@state).stopping
+  end
+
+  # Adaptive ceiling: projects whose CI/system tests legitimately run >25 min carry large durations
+  # in tmp/test_durations.json; the kill ceiling self-tunes to max(static, recorded × 1.5), capped.
+  def test_long_tool_kill_ceiling_rises_with_recorded_durations
+    base = McptaskRunner::ClaudeCodeBase.new
+    big = JSON.generate("system" => { "max_duration_ms" => 2_400_000 }) # 40 min run → 3600s ceiling
+    File.stub(:read, big) do
+      assert_equal 3600, base.send(:long_tool_kill_ceiling)
+      assert_equal 3900, base.send(:absolute_silence_ceiling)
+    end
+  end
+
+  def test_long_tool_kill_ceiling_falls_back_to_static_when_file_absent
+    base = McptaskRunner::ClaudeCodeBase.new
+    File.stub(:read, ->(*) { raise Errno::ENOENT }) do
+      assert_equal McptaskRunner::ClaudeCodeBase::TOOL_HANG_TIMEOUTS[:long][:kill], base.send(:long_tool_kill_ceiling)
+    end
+  end
+
+  def test_recorded_run_ceiling_is_capped
+    base = McptaskRunner::ClaudeCodeBase.new
+    huge = JSON.generate("system" => { "max_duration_ms" => 99_999_999 })
+    File.stub(:read, huge) do
+      assert_equal McptaskRunner::ClaudeCodeBase::ADAPTIVE_CEILING_CAP, base.send(:recorded_run_ceiling)
+    end
   end
 
   # The backstop the watchdog was missing: kill on prolonged stream silence even while a tool

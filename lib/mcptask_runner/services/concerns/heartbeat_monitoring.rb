@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 module McptaskRunner
   module Concerns
     # Heartbeat thread + snapshot status mutators (pending / frozen / processing / error).
@@ -25,13 +27,25 @@ module McptaskRunner
       # so genuine long Bash/CI runs are still caught by their own ceiling, while a truly silent or
       # untracked hang (e.g. an MCP SSE call that never returns, the heartbeat-thread-died case)
       # dies no matter what. This is the deadline that does NOT care about has_active_tools?.
-      ABSOLUTE_SILENCE_KILL = 1800 # 30 minutes
+      ABSOLUTE_SILENCE_KILL = 3000 # 50 minutes — floor for long CI / system suites; adaptive ceiling raises it further
+      # The static long-tool ceiling (1500s) is too tight for projects whose CI / system tests
+      # legitimately run past 30 min. The test-runner/ci-runner skills already record real run
+      # durations in tmp/test_durations.json; reuse them (same ×1.5 safety factor the skills apply)
+      # so the kill ceiling self-tunes per project — fast projects keep the tight default, CI-heavy
+      # ones get headroom — without a hand-maintained config. Capped so a bogus entry can't disable
+      # the watchdog entirely.
+      TEST_DURATIONS_FILE = "tmp/test_durations.json"
+      ADAPTIVE_CEILING_FACTOR = 1.5
+      ADAPTIVE_CEILING_CAP = 5400 # 90 minutes — hard ceiling regardless of recorded durations
       # interval: live REST quota re-check cadence during a task (~6 min).
       # failure_kill_streak: consecutive REST failures before fail-closed mid-task kill (~18 min outage).
       QUOTA_POLL = { interval: 360, failure_kill_streak: 3 }.freeze
       # Per-tool ceilings (seconds). :warn → status=:pending (soft warn).
       # :kill → status=:error + SIGTERM. Quick = MCP/Read/Edit/Grep. Long = Bash/Task.
-      TOOL_HANG_TIMEOUTS = { quick: { warn: 120, kill: 300 }, long: { warn: 600, kill: 1500 } }.freeze
+      # Long :kill is the FLOOR for CI / system suites (which routinely run 25–45 min); the adaptive
+      # ceiling from tmp/test_durations.json only ever raises it, so targeted/killed runs that never
+      # record a duration are still given this much headroom before a kill.
+      TOOL_HANG_TIMEOUTS = { quick: { warn: 120, kill: 300 }, long: { warn: 600, kill: 2700 } }.freeze
       # Tools that legitimately run long: Bash (CI/system tests), Task (subagents),
       # Skill (forked sub-skill execution like ci-wait/test-wait can poll up to 9 min each),
       # TaskOutput (polls output from long-running sub-tasks / background commands — itself
@@ -120,10 +134,10 @@ module McptaskRunner
       # whether a tool is flagged active. Catches hangs the per-tool ceilings miss (untracked tool,
       # or — historically — a dead heartbeat thread that came back via the supervisor).
       def terminate_for_stream_silence(stream_quiet_seconds, stderr_content)
-        return false if stream_quiet_seconds < ABSOLUTE_SILENCE_KILL
+        return false if stream_quiet_seconds < absolute_silence_ceiling
 
         Logger.error "[#{@log_tag}] No stream output for #{stream_quiet_seconds}s " \
-                     "(absolute silence backstop > #{ABSOLUTE_SILENCE_KILL}s), terminating..."
+                     "(absolute silence backstop > #{absolute_silence_ceiling}s), terminating..."
         @snapshot_builder.set_status(:error, error_message: "Absolute stream-silence timeout — killing subprocess")
         EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)
         terminate_for_inactivity(stderr_content)
@@ -237,10 +251,20 @@ module McptaskRunner
       end
 
       def hung_tool(now)
-        @snapshot_builder.active_actions_snapshot.each_value do |info|
-          return info if (now - info[:mono_started_at]) >= tool_hang_timeout_for(info[:name])
-        end
-        nil
+        tool = newest_active_tool
+        return nil unless tool
+
+        (now - tool[:mono_started_at]) >= tool_hang_timeout_for(tool[:name]) ? tool : nil
+      end
+
+      # The only tool Claude is actually blocked on is the most-recently-started one. Older entries
+      # that linger past it are orphans — Claude Code sometimes never emits a tool_result for a forked
+      # Skill, so a stale entry can sit "active" for the whole run while Claude fires fresh tools and
+      # is plainly alive. Judging liveness by the newest tool means those orphans can never trigger a
+      # kill while newer work proves the child responsive; a genuine hang still surfaces because
+      # nothing newer gets issued, so the newest entry's own age crosses the ceiling.
+      def newest_active_tool
+        @snapshot_builder.active_actions_snapshot.values.max_by { |info| info[:mono_started_at] }
       end
 
       def tool_hang_timeout_for(name)
@@ -263,18 +287,45 @@ module McptaskRunner
       end
 
       def dead_tool(now)
-        @snapshot_builder.active_actions_snapshot.each_value do |info|
-          return info if (now - info[:mono_started_at]) >= tool_kill_timeout_for(info[:name])
-        end
-        nil
+        tool = newest_active_tool
+        return nil unless tool
+
+        (now - tool[:mono_started_at]) >= tool_kill_timeout_for(tool[:name]) ? tool : nil
       end
 
       def tool_kill_timeout_for(name)
-        TOOL_HANG_TIMEOUTS[tool_category(name)][:kill]
+        return long_tool_kill_ceiling if tool_category(name) == :long
+
+        TOOL_HANG_TIMEOUTS[:quick][:kill]
       end
 
       def tool_category(name)
         LONG_RUNNING_TOOLS.include?(name) ? :long : :quick
+      end
+
+      # Adaptive long-tool kill ceiling: never tighter than the static default, raised toward the
+      # project's longest recorded run when that exceeds it, capped at ADAPTIVE_CEILING_CAP.
+      def long_tool_kill_ceiling
+        @long_tool_kill_ceiling ||= [TOOL_HANG_TIMEOUTS[:long][:kill], recorded_run_ceiling].max
+      end
+
+      # Absolute-silence backstop sits a margin above the long-tool ceiling so a genuine long run is
+      # caught by its own ceiling first, not the blanket silence kill.
+      def absolute_silence_ceiling
+        @absolute_silence_ceiling ||= [ABSOLUTE_SILENCE_KILL, long_tool_kill_ceiling + 300].max
+      end
+
+      # Longest recorded test/CI duration (ms) × safety factor, in seconds; 0 when the file is
+      # absent or unreadable, so we fall back to the static constant. A missing/partial file is the
+      # normal case (most runs never write it), not a programmer error — degrade quietly.
+      def recorded_run_ceiling
+        durations = JSON.parse(File.read(File.join(Dir.pwd, TEST_DURATIONS_FILE)))
+        longest_ms = durations.values.flat_map { |entry| entry.values_at("last_duration_ms", "max_duration_ms") }.compact.max
+        return 0 unless longest_ms
+
+        [(longest_ms * ADAPTIVE_CEILING_FACTOR / 1000).to_i, ADAPTIVE_CEILING_CAP].min
+      rescue Errno::ENOENT, JSON::ParserError
+        0
       end
     end
   end

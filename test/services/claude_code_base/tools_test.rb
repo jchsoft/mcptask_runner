@@ -266,7 +266,7 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     assert_equal 120, timeouts[:quick][:warn]
     assert_equal 300, timeouts[:quick][:kill]
     assert_equal 600, timeouts[:long][:warn]
-    assert_equal 1500, timeouts[:long][:kill]
+    assert_equal 2700, timeouts[:long][:kill]
   end
 
   def test_long_running_tools_constant_includes_bash_and_task
@@ -300,7 +300,7 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     builder.instance_variable_get(:@active_actions)['taskoutput_1'] = {
       name: 'TaskOutput', summary: 'polling long task',
-      mono_started_at: now - 800, started_at: Time.now.utc.iso8601(3) # > 300s quick kill, < 1500s long kill
+      mono_started_at: now - 800, started_at: Time.now.utc.iso8601(3) # > 300s quick kill, < 2700s long kill
     }
 
     refute base.send(:terminate_for_hung_tool_if_dead, now, "", 300),

@@ -234,6 +234,20 @@ class SnapshotBuilderTest < Minitest::Test
     end
   end
 
+  # Idempotent re-set: a watchdog that re-flags the same status each heartbeat tick (e.g. hung-tool
+  # kill firing while status is already "error") must NOT raise — raising there aborted the kill
+  # path, leaving the subprocess alive and the loop spinning "error → error" forever.
+  def test_same_state_transition_is_noop_and_updates_message
+    @builder.set_status("triage")
+    @builder.set_status("processing")
+    @builder.set_status("error", error_message: "first")
+
+    @builder.set_status("error", error_message: "second") # must not raise
+
+    assert_equal "error", @builder.to_h[:status]
+    assert_equal "second", @builder.to_h[:error_message]
+  end
+
   # Urgent-bug-pin bypass: after a story/task finishes and pins an urgent bug,
   # execute_pinned_urgent_bug skips triage and jumps the pinned bug straight to
   # processing — so finished → processing must be allowed (regression: this used
