@@ -1268,6 +1268,13 @@ class ClaudeCodeTaskManualTest < Minitest::Test
     refute_includes instructions, 'GIT SETUP'
   end
 
+  def test_create_branch_step_checks_for_existing_branch_before_creating
+    task_manual = McptaskRunner::ClaudeCode::TaskManual.new(task_id: 123)
+    instructions = task_manual.send(:build_instructions)
+    assert_includes instructions, 'git branch --list "*<task_id>*"'
+    assert_includes instructions, 'RESUME existing work'
+  end
+
   def test_task_manual_instructions_emphasizes_no_merge
     task_manual = McptaskRunner::ClaudeCode::TaskManual.new(task_id: 123)
     instructions = task_manual.send(:build_instructions)

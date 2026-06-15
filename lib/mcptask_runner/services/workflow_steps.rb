@@ -73,9 +73,10 @@ module McptaskRunner
     def create_branch_step(step_num:)
       s = step_indent(step_num)
       <<~STEP.strip
-        #{step_num}. CREATE BRANCH:
-        #{s}- Include task ID: "feature/{task_id}-{desc}" or "fix/{task_id}-{desc}"
-        #{s}- git checkout -b <branch-name>
+        #{step_num}. CREATE BRANCH (resume existing first — use the fetched task's ID):
+        #{s}- Check for an existing branch for this task: git branch --list "*<task_id>*"
+        #{s}- MATCH → git checkout <branch_name> && git fetch origin main && git merge origin/main (RESUME existing work; do NOT create a duplicate)
+        #{s}- NO MATCH → create: "feature/{task_id}-{desc}" or "fix/{task_id}-{desc}", then git checkout -b <branch-name>
       STEP
     end
 
