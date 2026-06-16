@@ -192,7 +192,7 @@ module McptaskRunner
         lines = ['- "success" if task completed AND `gh pr view <pr_number> --json state --jq .state` returns `MERGED`']
         lines << %(- "no_more_tasks" if #{no_more_tasks}) if no_more_tasks
         lines << '- "ci_failed" if CI failed after retry (PR stays open)'
-        lines << '- "merge_failed" if `gh pr merge` itself errored (branch protection, conflicts, etc.)'
+        lines << '- "merge_failed" if PR merge skill or `gh pr merge` itself errored (branch protection, conflicts, etc.)'
         lines << '- "preexisting_test_errors" if tests were already failing before your changes (urgent bug task created)'
         lines << '- "already_done" if task already resolved (no code changes needed — e.g. fixed in earlier commit / fix branch is empty); ' \
                  "MUST log final progress at 100% naming the resolving commit SHA#{loop_hint}"
@@ -303,7 +303,7 @@ module McptaskRunner
               - NOTE: bin/ci posts "signoff" status to GitHub via gh. Satisfies branch protection.
                 Disabled CI workflow (ci.yml.disabled) irrelevant — signoff is local. PR IS mergeable.
               - CI PASSES:
-                → gh pr merge --squash --delete-branch
+                → use skill to merge PR or: gh pr merge --squash --delete-branch
                 → git checkout main && git pull
                 → status "success"
               - CI FAILS:
