@@ -63,7 +63,7 @@ while outer_iterations < 10:
     continue                               # back to outer loop, retry test-start
 
   if result starts with "TEST_STARTED":
-    max_waits = max(3, min(8, ceil(EXPECTED_SEC / 540) + 2))
+    max_waits = max(6, min(8, ceil(EXPECTED_SEC / 540) + 2))  # floor 6 → ≥54min; ROR system-test suites run ~30min+
     waits = 0
     while waits < max_waits:
       waits += 1
