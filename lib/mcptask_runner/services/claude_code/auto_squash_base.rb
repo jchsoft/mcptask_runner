@@ -285,7 +285,7 @@ module McptaskRunner
         ci_step = start + 9
         final_step = ci_step + 1
         <<~BODY.strip
-          #{steps.join("\n\n")}
+          #{steps.reject(&:empty?).join("\n\n")}
 
           #{ci_run_and_merge_step(step_num: ci_step, next_step: final_step)}
           #{final_step}. FINAL OUTPUT: Generate the result JSON

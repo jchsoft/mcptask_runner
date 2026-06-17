@@ -69,10 +69,18 @@ module McptaskRunner
 
       # The runner snapshots the child's TodoWrite list to the mcptask.online dashboard
       # (SnapshotBuilder todo_list) — without one the card shows no plan/progress detail.
+      #
+      # DISABLED: the TodoWrite mirroring doesn't actually show up on the frontend, so
+      # forcing the child to maintain a list adds no value right now. Kept (not deleted)
+      # because the snapshot plumbing is still wired up.
+      # TODO: figure out why the mirrored TodoWrite list never reaches the frontend
+      #       (SnapshotBuilder todo_list → dashboard card), then re-enable the instruction
+      #       below by returning the heredoc again.
       def todo_list_instruction
-        <<~INSTRUCTION.strip
-          TODO LIST (MANDATORY): keep a live TodoWrite list of the workflow steps (in_progress/completed as you go) — the runner mirrors it to the dashboard.
-        INSTRUCTION
+        ''
+        # <<~INSTRUCTION.strip
+        #   TODO LIST (MANDATORY): keep a live TodoWrite list of the workflow steps (in_progress/completed as you go) — the runner mirrors it to the dashboard.
+        # INSTRUCTION
       end
 
       def progress_logging_instruction

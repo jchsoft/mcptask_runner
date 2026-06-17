@@ -34,13 +34,16 @@ class ClaudeCodeHonestTest < Minitest::Test
     end
   end
 
-  def test_instructions_includes_todo_list_mandate
+  # TODO LIST instruction is currently DISABLED (todo_list_instruction returns '')
+  # because the mirrored TodoWrite list never shows up on the frontend.
+  # TODO: once the frontend mirroring is fixed and the instruction is re-enabled,
+  #       restore this to assert the mandate is present again.
+  def test_instructions_omits_disabled_todo_list_mandate
     File.stub :exist?, true do
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         honest = McptaskRunner::ClaudeCode::Honest.new
         instructions = honest.send(:build_instructions)
-        assert_includes instructions, 'TODO LIST (MANDATORY)'
-        assert_includes instructions, 'TodoWrite'
+        refute_includes instructions, 'TODO LIST (MANDATORY)'
       end
     end
   end
