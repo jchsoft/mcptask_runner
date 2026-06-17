@@ -35,6 +35,7 @@ module McptaskRunner
       @pending = {}                  # tool_use_id -> { name:, signature: }
       @signature_window = []         # ring of { signature:, mutated_after: false }
       @file_mutated_during_window = false
+      @mutation_since_last_bash = false # progress guard for bash_failure_loop
     end
 
     def observe_tool_use(item)
@@ -75,6 +76,7 @@ module McptaskRunner
       else
         @edit_failure_streak = 0
         @file_mutated_during_window = true
+        @mutation_since_last_bash = true
       end
       nil
     end
@@ -84,13 +86,16 @@ module McptaskRunner
       record = @bash_failures[pending[:signature]]
 
       # Non-error, non-zero exit codes still count as "stuck" (e.g. tests keep failing on same cmd).
-      if (is_error || (exit_code && exit_code != 0)) && record[:exit_code] == exit_code
+      # A successful edit since the last bash result means progress happened — reset, not a stall.
+      # Mirrors the @file_mutated_during_window guard in detect_signature_repeat.
+      if (is_error || (exit_code && exit_code != 0)) && record[:exit_code] == exit_code && !@mutation_since_last_bash
         record[:count] += 1
         return stall(:bash_failure_loop, pending[:signature], record[:count], "exit=#{exit_code}") if record[:count] >= BASH_FAILURE_REPEAT_LIMIT
       else
         record[:exit_code] = exit_code
         record[:count] = 1
       end
+      @mutation_since_last_bash = false
       nil
     end
 

@@ -77,6 +77,28 @@ class StallDetectorTest < Minitest::Test
     assert_nil stall
   end
 
+  def test_bash_failure_loop_suppressed_by_intervening_edit
+    # Normal fix-iteration: run fails, edit, run fails, edit, run fails — progress each time.
+    pair_bash(command: 'rspec', exit_code: 1, error: true)
+    pair_edit_success(file: 'a.rb', old: 'foo')
+    pair_bash(command: 'rspec', exit_code: 1, error: true)
+    pair_edit_success(file: 'a.rb', old: 'bar')
+    stall = pair_bash(command: 'rspec', exit_code: 1, error: true)
+
+    assert_nil stall, 'A successful edit between failures is progress, not a stall'
+  end
+
+  def test_bash_failure_loop_still_fires_after_edit_when_spinning_resumes
+    # One edit gives a fresh chance, but three straight failures with no further progress stalls.
+    pair_edit_success(file: 'a.rb', old: 'foo')
+    pair_bash(command: 'rspec', exit_code: 1, error: true)
+    pair_bash(command: 'rspec', exit_code: 1, error: true)
+    stall = pair_bash(command: 'rspec', exit_code: 1, error: true)
+
+    refute_nil stall
+    assert_equal :bash_failure_loop, stall.reason
+  end
+
   def test_bash_different_commands_tracked_separately
     pair_bash(command: 'rspec', exit_code: 1, error: true)
     pair_bash(command: 'rubocop', exit_code: 1, error: true)
