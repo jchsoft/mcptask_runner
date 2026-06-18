@@ -172,6 +172,26 @@ module McptaskRunner
 
     private
 
+    # Handoff for a fresh-session restart after a context overflow. The dead session's work lives
+    # on disk (git branch + commits), but the new child starts with empty context and no memory of
+    # what it was mid-doing — so prepend its last few actions plus a nudge to work lean. Empty when
+    # there's nothing to hand off (e.g. overflow before any tool ran), keeping normal runs untouched.
+    def fresh_restart_preamble
+      actions = @snapshot_builder.recent_actions
+      return '' if actions.empty?
+
+      numbered = actions.each_with_index.map { |action, i| "#{i + 1}. #{action}" }.join("\n")
+      <<~PREAMBLE
+        Your previous session ran out of context and was restarted fresh. Your work so far is on disk
+        (git branch + commits) — run `git status` / `git log` first to see it. The last #{actions.size} actions you
+        performed were:
+        #{numbered}
+        Continue from there. Work in a focused way — read only the lines you need and avoid dumping whole
+        files or unbounded `find`/`grep` output, so you don't run out of context again.
+
+      PREAMBLE
+    end
+
     def attempt_execution(start_time)
       # A fresh restart (post context-overflow) consumes its flag here: no --continue, so it must
       # get the FULL build_instructions (a fresh session has empty context). Every other --continue
@@ -182,6 +202,7 @@ module McptaskRunner
       @retry_state.fresh_restart = false
       continue = (@retry_state.count.positive? || @retry_state.marker_retry_mode) && !fresh
       instructions = continue ? build_continuation_instructions : build_instructions
+      instructions = "#{fresh_restart_preamble}#{instructions}" if fresh
       command = build_command(base_command, instructions, continue_session: continue)
 
       Logger.debug "[#{@log_tag}] Executing Claude with instructions (length: #{instructions.length} chars)"

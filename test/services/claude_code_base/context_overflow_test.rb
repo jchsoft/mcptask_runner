@@ -213,6 +213,57 @@ class ClaudeCodeBaseContextOverflowTest < Minitest::Test
     refute base.instance_variable_get(:@retry_state).fresh_restart, 'fresh_restart flag must be consumed after one attempt'
   end
 
+  # A fresh restart must hand the new (empty-context) session the last few actions of the dead
+  # session plus a work-lean nudge, so it doesn't blindly re-explore and re-overflow.
+  def test_attempt_execution_fresh_restart_prepends_recent_actions_handoff
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'sonnet' }
+    base.define_singleton_method(:build_instructions) { 'FULL WORKFLOW' }
+    base.instance_variable_get(:@retry_state).fresh_restart = true
+
+    sb = base.instance_variable_get(:@snapshot_builder)
+    sb.tool_started(tool_id: 't1', name: 'Bash', summary: 'find page_controller')
+    sb.tool_finished(tool_id: 't1')
+
+    base.instance_variable_set(:@accumulated_output, +'')
+    captured = nil
+    capture = ->(_base, instructions, continue_session: false) { captured = instructions; [] }
+    base.stub(:build_command, capture) do
+      base.stub(:execute_with_streaming, '') do
+        base.stub(:parse_result, { 'status' => 'success' }) do
+          base.instance_variable_get(:@state).result_received = true
+          base.send(:attempt_execution, Time.now)
+        end
+      end
+    end
+
+    assert_match(/ran out of context/, captured, 'fresh restart must include the overflow handoff preamble')
+    assert_includes captured, 'Bash: find page_controller', 'must list the dead session\'s recent actions'
+    assert_includes captured, 'FULL WORKFLOW', 'must still include the full fresh instructions'
+  end
+
+  # No recent actions captured (overflow before any tool ran) → no preamble, instructions untouched.
+  def test_attempt_execution_fresh_restart_no_preamble_without_recent_actions
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'sonnet' }
+    base.define_singleton_method(:build_instructions) { 'FULL WORKFLOW' }
+    base.instance_variable_get(:@retry_state).fresh_restart = true
+
+    base.instance_variable_set(:@accumulated_output, +'')
+    captured = nil
+    capture = ->(_base, instructions, continue_session: false) { captured = instructions; [] }
+    base.stub(:build_command, capture) do
+      base.stub(:execute_with_streaming, '') do
+        base.stub(:parse_result, { 'status' => 'success' }) do
+          base.instance_variable_get(:@state).result_received = true
+          base.send(:attempt_execution, Time.now)
+        end
+      end
+    end
+
+    assert_equal 'FULL WORKFLOW', captured, 'empty handoff must leave instructions byte-for-byte unchanged'
+  end
+
   # A non-fresh --continue retry (count>0) must send the short continuation prompt, NOT the full
   # build_instructions — the resumed session already carries the full workflow in context.
   def test_attempt_execution_continue_retry_uses_continuation_prompt

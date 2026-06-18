@@ -69,6 +69,48 @@ class SnapshotBuilderTest < Minitest::Test
     assert_nil @builder.to_h[:message]
   end
 
+  # ---- recent_actions (fresh-restart handoff trail) ----
+
+  def finish_action(id, name, summary)
+    @builder.tool_started(tool_id: id, name: name, summary: summary)
+    @builder.tool_finished(tool_id: id)
+  end
+
+  def test_recent_actions_empty_initially
+    assert_equal [], @builder.recent_actions
+  end
+
+  def test_recent_actions_records_finished_action
+    finish_action("t1", "Bash", "find page_controller")
+    assert_equal ["Bash: find page_controller"], @builder.recent_actions
+  end
+
+  def test_recent_actions_caps_at_three_keeping_newest
+    finish_action("t1", "Bash", "first")
+    finish_action("t2", "Read", "second")
+    finish_action("t3", "Edit", "third")
+    finish_action("t4", "Grep", "fourth")
+
+    assert_equal ["Read: second", "Edit: third", "Grep: fourth"], @builder.recent_actions
+  end
+
+  def test_recent_actions_ignores_unknown_tool_id
+    @builder.tool_finished(tool_id: "never-started")
+    assert_equal [], @builder.recent_actions
+  end
+
+  def test_recent_actions_returns_a_copy
+    finish_action("t1", "Bash", "ls")
+    @builder.recent_actions << "Edit: tampered"
+    assert_equal ["Bash: ls"], @builder.recent_actions
+  end
+
+  def test_set_task_clears_recent_actions
+    finish_action("t1", "Bash", "ls")
+    @builder.set_task(task_id: 99, task_name: "Next")
+    assert_equal [], @builder.recent_actions
+  end
+
   # ---- set_thinking (ephemeral, monotonic-clock TTL) ----
 
   def test_set_thinking_appears_in_snapshot

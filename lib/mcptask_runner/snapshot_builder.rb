@@ -25,6 +25,10 @@ module McptaskRunner
     # this many seconds so old messages don't persist into the next work cycle.
     MESSAGE_TTL_S = 60
 
+    # How many completed actions to retain as the fresh-restart handoff trail. Small on purpose:
+    # a context overflow is caused by too much context, so the recovery hint must stay tiny.
+    RECENT_ACTIONS_CAP = 3
+
     # Latest thought + its monotonic stamp, bundled so build_snapshot can age it out.
     Thought = Data.define(:text, :mono_at)
 
@@ -66,6 +70,7 @@ module McptaskRunner
       @quota = nil
       @error_message = nil
       @active_actions = {}
+      @recent_actions = []
       @todos = []
       @thought = nil
       @message = nil
@@ -78,6 +83,7 @@ module McptaskRunner
         @task_id = task_id
         @task_name = task_name
         @todos = [] # prior task's TodoWrite must not leak into next task
+        @recent_actions = [] # nor its recent-action handoff trail
         @thought = nil # nor prior task's last thought
         @message = nil # nor its last text message
         touch_activity
@@ -157,9 +163,20 @@ module McptaskRunner
 
     def tool_finished(tool_id:)
       @mutex.synchronize do
+        if (action = @active_actions[tool_id])
+          @recent_actions << "#{action[:name]}: #{action[:summary]}"
+          @recent_actions.shift if @recent_actions.size > RECENT_ACTIONS_CAP
+        end
         @active_actions.delete(tool_id)
         touch_activity
       end
+    end
+
+    # Last few completed actions ("Bash: find page_controller", ...), newest last. Survives a
+    # fresh-session restart (the builder outlives the child process) so the next attempt can be
+    # told what the overflowed session was doing. Returns a copy.
+    def recent_actions
+      @mutex.synchronize { @recent_actions.dup }
     end
 
     def clear_active_actions
