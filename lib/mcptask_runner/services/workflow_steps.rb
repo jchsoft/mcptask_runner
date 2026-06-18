@@ -174,6 +174,11 @@ module McptaskRunner
         6. Add field "bug_task_id": <relative_id of the urgent bug task you created> — REQUIRED so runner pins the new bug
         7. Add field "bug_task_name": <name of the urgent bug task you created> — REQUIRED so runner shows the name in the card
         8. Do NOT fix them — only create bug task
+
+        NOT preexisting but CI still red (tests PASS on main without your changes, yet bin/ci
+        fails — flake, environment, or cannot reproduce): this is NOT "success". No signoff
+        was posted, so the PR cannot merge. Do NOT merge and do NOT claim it merged. If you
+        cannot get bin/ci to exit 0 after retry → status "ci_failed" (PR stays open).
       INSTRUCTION
     end
 

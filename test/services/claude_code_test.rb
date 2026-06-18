@@ -519,7 +519,7 @@ class ClaudeCodeStoryAutoSquashTest < Minitest::Test
     assert_includes instructions, 'bin/ci'
     assert_includes instructions, 'CI FAILS'
     assert_includes instructions, 'Retry bin/ci'
-    assert_includes instructions, 'Retry fails'
+    assert_includes instructions, 'Retry still nonzero'
     assert_includes instructions, 'ci_failed'
   end
 
@@ -651,7 +651,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
         assert_includes instructions, 'bin/ci'
         assert_includes instructions, 'CI FAILS'
         assert_includes instructions, 'Retry bin/ci'
-        assert_includes instructions, 'Retry fails'
+        assert_includes instructions, 'Retry still nonzero'
         assert_includes instructions, 'ci_failed'
       end
     end
@@ -922,7 +922,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
         assert_includes instructions, 'bin/ci'
         assert_includes instructions, 'CI FAILS'
         assert_includes instructions, 'Retry bin/ci'
-        assert_includes instructions, 'Retry fails'
+        assert_includes instructions, 'Retry still nonzero'
         assert_includes instructions, 'ci_failed'
       end
     end
@@ -1077,7 +1077,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
         assert_includes instructions, 'bin/ci'
         assert_includes instructions, 'CI FAILS'
         assert_includes instructions, 'Retry bin/ci'
-        assert_includes instructions, 'Retry fails'
+        assert_includes instructions, 'Retry still nonzero'
         assert_includes instructions, 'ci_failed'
       end
     end
@@ -1394,7 +1394,7 @@ class ClaudeCodeTaskAutoSquashTest < Minitest::Test
     assert_includes instructions, 'bin/ci'
     assert_includes instructions, 'CI FAILS'
     assert_includes instructions, 'Retry bin/ci'
-    assert_includes instructions, 'Retry fails'
+    assert_includes instructions, 'Retry still nonzero'
     assert_includes instructions, 'ci_failed'
   end
 
@@ -1514,5 +1514,32 @@ class PreexistingTestErrorsInstructionsTest < Minitest::Test
         refute_includes instructions, 'PREEXISTING TEST ERRORS'
       end
     end
+  end
+
+  def test_preexisting_instruction_covers_passes_on_main_but_ci_red
+    obj = McptaskRunner::ClaudeCode::TaskAutoSquash.new(task_id: 123)
+    instructions = obj.send(:build_instructions)
+    assert_includes instructions, 'NOT preexisting but CI still red'
+    assert_includes instructions, 'ci_failed'
+  end
+end
+
+class AutoSquashCiGateInstructionsTest < Minitest::Test
+  def test_ci_step_forbids_reclassifying_red_ci_as_green
+    instructions = McptaskRunner::ClaudeCode::TaskAutoSquash.new(task_id: 123).send(:build_instructions)
+    assert_includes instructions, 'EXIT CODE 0'
+    assert_includes instructions, 'reclassify a red CI as green'
+  end
+
+  def test_ci_step_hard_gate_requires_merged_before_success
+    instructions = McptaskRunner::ClaudeCode::TaskAutoSquash.new(task_id: 123).send(:build_instructions)
+    assert_includes instructions, 'HARD GATE before emitting "success"'
+    assert_includes instructions, 'returns MERGED'
+  end
+
+  def test_ci_step_flake_on_main_is_still_ci_failed_not_success
+    instructions = McptaskRunner::ClaudeCode::StoryAutoSquash.new(story_id: 123, task_id: 456).send(:build_instructions)
+    assert_includes instructions, 'passes on main locally'
+    assert_includes instructions, 'NEVER "success"'
   end
 end

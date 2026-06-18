@@ -307,17 +307,26 @@ module McptaskRunner
           #{step_num}. CI + AUTO-MERGE:
               - No bin/ci → skip to step #{next_step}, status "success"
               - Invoke /ci-runner
-              - NOTE: bin/ci posts "signoff" status to GitHub via gh. Satisfies branch protection.
-                Disabled CI workflow (ci.yml.disabled) irrelevant — signoff is local. PR IS mergeable.
-              - CI PASSES:
+              - NOTE: bin/ci posts "signoff" status to GitHub via gh ONLY when it exits 0.
+                Disabled CI workflow (ci.yml.disabled) irrelevant — signoff is local.
+              - "CI PASSES" means bin/ci EXIT CODE 0 — nothing else. A nonzero exit is a FAIL
+                even if you believe the failures are flaky, environmental, pre-existing, or
+                unrelated to your change. You do NOT get to reclassify a red CI as green.
+              - CI PASSES (exit 0):
                 → use skill to merge PR or: gh pr merge --squash --delete-branch
                 → git checkout main && git pull
-                → status "success"
-              - CI FAILS:
+                → HARD GATE before emitting "success": run
+                  `gh pr view <pr_number> --json state --jq .state` — emit "success" ONLY if it
+                  returns MERGED. Anything else → status "merge_failed" (NEVER "success").
+              - CI FAILS (nonzero exit):
                 → Analyze, fix, commit, push
                 → Retry bin/ci
-                → Retry passes → merge (above)
-                → Retry fails → status "ci_failed" (PR stays open)
+                → Retry passes (exit 0) → merge (above)
+                → Retry still nonzero → status "ci_failed" (PR stays open). NEVER "success".
+              - CI fails but passes on main locally (suspected flake/env, cannot reproduce):
+                → still a FAIL — bin/ci exited nonzero so NO signoff was posted and the PR
+                  cannot merge. status "ci_failed" (PR stays open). NEVER "success", NEVER
+                  claim the PR was merged.
         STEP
       end
     end
