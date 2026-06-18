@@ -19,6 +19,13 @@ module McptaskRunner
       # models that skip the STEP 2 fetch echo it verbatim — never publish it as a real name.
       PLACEHOLDER_TASK_NAME = 'Piece title'
 
+      # Shown on the web card while triage is still discovering which task to run. In @next
+      # discovery mode there's no task_id yet, so without a name the snapshot frame carries
+      # task_id:nil/task_name:nil and the dashboard has nothing to render until the
+      # triage→processing handoff. A label gives the card something to show during triage.
+      # Overwritten by the real task name at execute time (set_task in triage_and_execute).
+      TRIAGE_TASK_PLACEHOLDER = 'Triaging next task…'
+
       STORY_EXECUTOR_MAP = {
         ClaudeCode::Honest => ClaudeCode::StoryManual,
         ClaudeCode::TodayAutoSquash => ClaudeCode::StoryAutoSquash,
@@ -48,7 +55,7 @@ module McptaskRunner
         story_id_for_triage = kwargs[:story_id]
 
         Logger.info_stdout('[WorkLoop] Running triage to select optimal model...')
-        @builder&.set_task(task_id: task_id_for_triage)
+        @builder&.set_task(task_id: task_id_for_triage, task_name: TRIAGE_TASK_PLACEHOLDER)
         @builder&.set_status(:triage)
         EventStream.emit_snapshot(@builder.to_h, force: true) if @builder
         triage_result = ClaudeCode::Triage.new(verbose: @verbose, task_id: task_id_for_triage, story_id: story_id_for_triage, snapshot_builder: @builder).run
