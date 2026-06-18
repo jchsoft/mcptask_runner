@@ -3,6 +3,11 @@
 require 'test_helper'
 
 class ClaudeCodeBaseRetryTest < Minitest::Test
+  # Named (not anonymous) so self.class.name is non-nil in ClaudeCodeBase#initialize.
+  class StubAutoSquash < McptaskRunner::ClaudeCode::AutoSquashBase
+    def result_json_fields = '"status": "success", "pr_number": N'
+  end
+
   def test_stream_closed_error_exists
     assert_kind_of Class, McptaskRunner::StreamClosedError
     assert McptaskRunner::StreamClosedError < StandardError
@@ -76,11 +81,10 @@ class ClaudeCodeBaseRetryTest < Minitest::Test
     assert_match(/retries exhausted/, result['message'])
   end
 
-  def test_build_marker_retry_instructions_contains_retry_guidance
+  def test_build_continuation_instructions_contains_retry_guidance
     base = McptaskRunner::ClaudeCodeBase.new
-    base.define_singleton_method(:build_instructions) { 'Original workflow instructions here' }
 
-    instructions = base.send(:build_marker_retry_instructions)
+    instructions = base.send(:build_continuation_instructions)
 
     assert_includes instructions, 'previous session was interrupted'
     assert_includes instructions, 'Check what you already completed'
@@ -91,15 +95,35 @@ class ClaudeCodeBaseRetryTest < Minitest::Test
     assert_includes instructions, 'Do NOT just output the marker'
   end
 
-  def test_build_marker_retry_instructions_includes_original_instructions
+  # The whole point of the continuation prompt: --continue already replays the full workflow into
+  # context, so it must NOT re-embed build_instructions (that would duplicate the done steps).
+  def test_build_continuation_instructions_omits_full_workflow
     base = McptaskRunner::ClaudeCodeBase.new
-    original_instructions = 'Step 1: Do this\nStep 2: Do that\nTASKRUNNER_RESULT: {"status": "success"}'
-    base.define_singleton_method(:build_instructions) { original_instructions }
+    base.define_singleton_method(:build_instructions) { "Step 1: Do this\nStep 2: Do that\n" * 50 }
 
-    instructions = base.send(:build_marker_retry_instructions)
+    instructions = base.send(:build_continuation_instructions)
 
-    assert_includes instructions, 'ORIGINAL WORKFLOW'
-    assert_includes instructions, 'Step 1: Do this'
-    assert_includes instructions, 'Step 2: Do that'
+    refute_includes instructions, 'Step 1: Do this', 'continuation must NOT re-embed the full workflow'
+    refute_includes instructions, 'ORIGINAL WORKFLOW'
+    assert_operator instructions.length, :<, base.send(:build_instructions).length,
+                    'continuation must be shorter than full instructions'
+    assert_includes instructions, 'TASKRUNNER_RESULT'
+  end
+
+  def test_continuation_result_contract_default_is_generic_reference
+    contract = McptaskRunner::ClaudeCodeBase.new.send(:continuation_result_contract)
+
+    assert_includes contract, 'TASKRUNNER_RESULT'
+    assert_includes contract, 'specified earlier'
+  end
+
+  # auto_squash overrides the contract to reproduce the exact result-format block so a resumed
+  # session can't forget the marker.
+  def test_autosquash_continuation_contract_reproduces_result_format
+    contract = StubAutoSquash.new.send(:continuation_result_contract)
+
+    assert_includes contract, 'TASKRUNNER_RESULT'
+    assert_includes contract, '"status": "success"'
+    assert_includes contract, '```json'
   end
 end

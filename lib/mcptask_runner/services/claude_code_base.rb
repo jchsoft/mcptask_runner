@@ -173,15 +173,16 @@ module McptaskRunner
     private
 
     def attempt_execution(start_time)
-      # A fresh restart (post context-overflow) consumes its flag here: no --continue, and the
-      # normal workflow instructions (a fresh session can't continue a marker-only prompt;
-      # continuation is re-detected from task progress + git branch). Reset per-attempt so a
-      # later non-overflow failure of the healthy fresh session retries normally with --continue.
+      # A fresh restart (post context-overflow) consumes its flag here: no --continue, so it must
+      # get the FULL build_instructions (a fresh session has empty context). Every other --continue
+      # retry resumes a session that already carries the full workflow, so it gets the short
+      # build_continuation_instructions instead. Reset per-attempt so a later non-overflow failure
+      # of the healthy fresh session retries normally with --continue.
       fresh = @retry_state.fresh_restart
       @retry_state.fresh_restart = false
-      instructions = @retry_state.marker_retry_mode && !fresh ? build_marker_retry_instructions : build_instructions
-      command = build_command(base_command, instructions,
-                              continue_session: (@retry_state.count.positive? || @retry_state.marker_retry_mode) && !fresh)
+      continue = (@retry_state.count.positive? || @retry_state.marker_retry_mode) && !fresh
+      instructions = continue ? build_continuation_instructions : build_instructions
+      command = build_command(base_command, instructions, continue_session: continue)
 
       Logger.debug "[#{@log_tag}] Executing Claude with instructions (length: #{instructions.length} chars)"
       Logger.info_stdout "[#{@log_tag}] Starting real-time stream of Claude output:"

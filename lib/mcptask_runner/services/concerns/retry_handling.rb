@@ -167,24 +167,33 @@ module McptaskRunner
         nil # Signal to retry (bypass normal retry counter)
       end
 
-      def build_marker_retry_instructions
-        original_instructions = build_instructions
-
+      # Sent on every --continue retry (marker-retry OR recoverable-error retry). The resumed
+      # session already carries the full original workflow in context, so we deliberately do NOT
+      # re-send build_instructions — that would just duplicate the branch/implement/test steps that
+      # are already done and already in context. We re-state only the result-format contract (the one
+      # thing whose omission triggers marker-retry) and reference the rest of the workflow above.
+      def build_continuation_instructions
         <<~INSTRUCTIONS
-          Your previous session was interrupted before completing the workflow.
+          Your previous session was interrupted before completing the workflow or before emitting the result marker.
+          The full workflow is already in this conversation above — it is NOT repeated here.
 
           Please:
           1. Check what you already completed (git status, git log, check for open PRs)
-          2. Continue from where you left off in the workflow below
+          2. Continue from where you left off in the workflow above
           3. Complete ALL remaining steps
           4. At the END, output the TASKRUNNER_RESULT marker as specified
 
           IMPORTANT: Do NOT just output the marker - first verify and complete any remaining work!
 
-          === ORIGINAL WORKFLOW (continue from where you left off) ===
-
-          #{original_instructions}
+          #{continuation_result_contract}
         INSTRUCTIONS
+      end
+
+      # Result-format contract re-stated on continuation. Default is a generic reference (the exact
+      # format is in the resumed context). auto_squash_base overrides this to reproduce the full
+      # contract block via result_format_instruction.
+      def continuation_result_contract
+        'Output TASKRUNNER_RESULT exactly in the JSON format specified earlier in this conversation.'
       end
     end
   end

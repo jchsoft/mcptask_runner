@@ -213,6 +213,37 @@ class ClaudeCodeBaseContextOverflowTest < Minitest::Test
     refute base.instance_variable_get(:@retry_state).fresh_restart, 'fresh_restart flag must be consumed after one attempt'
   end
 
+  # A non-fresh --continue retry (count>0) must send the short continuation prompt, NOT the full
+  # build_instructions — the resumed session already carries the full workflow in context.
+  def test_attempt_execution_continue_retry_uses_continuation_prompt
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'sonnet' }
+    base.define_singleton_method(:build_instructions) { 'FULL WORKFLOW INSTRUCTIONS' }
+    base.instance_variable_get(:@retry_state).count = 1 # non-fresh retry → --continue
+
+    base.instance_variable_set(:@accumulated_output, +'')
+    captured_continue = nil
+    captured_instructions = nil
+    capture = lambda do |_base, instructions, continue_session: false|
+      captured_instructions = instructions
+      captured_continue = continue_session
+      []
+    end
+    base.stub(:build_command, capture) do
+      base.stub(:execute_with_streaming, '') do
+        base.stub(:parse_result, { 'status' => 'success' }) do
+          base.instance_variable_get(:@state).result_received = true
+          base.send(:attempt_execution, Time.now)
+        end
+      end
+    end
+
+    assert captured_continue, 'non-fresh retry (count>0) must pass --continue'
+    refute_includes captured_instructions, 'FULL WORKFLOW INSTRUCTIONS',
+                    'continue retry must send the short continuation prompt, not full instructions'
+    assert_includes captured_instructions, 'TASKRUNNER_RESULT'
+  end
+
   # Bug fix: TASKRUNNER_RESULT must win over context_overflow / api_overload patterns that
   # appeared earlier in the stream (e.g., a sub-agent hit overflow but main task completed).
   # Without this, a successful task gets reclassified as terminal context_overflow error.

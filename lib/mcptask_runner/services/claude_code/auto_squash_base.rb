@@ -164,6 +164,13 @@ module McptaskRunner
         INSTRUCTIONS
       end
 
+      # On --continue retries we send only the short continuation prompt; re-state the exact
+      # result-format contract (same one build_instructions emits) so the resumed session can't
+      # forget the marker — the failure mode that triggers marker-retry in the first place.
+      def continuation_result_contract
+        result_format_instruction(result_json_fields, extra_rules: [PR_FIELDS_RULE])
+      end
+
       # --- variant hooks (defaults here; subclasses override what differs) ---
       def impl_start = 3
       def workflow_notice = AUTO_SQUASH_NOTICE
