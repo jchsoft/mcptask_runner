@@ -217,24 +217,31 @@ class WorkLoopStoryTest < Minitest::Test
     end
   end
 
-  def test_execute_with_story_auto_squash_stops_on_ci_failed
+  # ci_failed is a fix-and-retry signal, NOT a stop reason — the loop continues so the
+  # same task is re-picked and the CI failure gets fixed on a fresh attempt.
+  def test_execute_with_story_auto_squash_continues_on_ci_failed
+    call_count = [0]
     executor_mock = Object.new
-    def executor_mock.run
-      { 'status' => 'ci_failed', 'message' => 'CI failed after retry' }
+    executor_mock.define_singleton_method(:run) do
+      call_count[0] += 1
+      if call_count[0] == 1
+        { 'status' => 'ci_failed', 'message' => 'CI failed after retry',
+          'hours' => { 'per_day' => 8, 'task_estimated' => 2 } }
+      else
+        { 'status' => 'no_more_tasks' }
+      end
     end
 
     McptaskRunner::ClaudeCode::Triage.stub(:new, triage_mock) do
       McptaskRunner::ClaudeCode::StoryAutoSquash.stub(:new, executor_mock) do
-        loop_instance = McptaskRunner::WorkLoop.new(story_id: 123)
-        # Stub current_git_branch defensively — ci_failed is not in URGENT_BUG_PIN_STATUSES
-        # today, but matching the sibling tests keeps the suite immune to future list changes.
-        results = loop_instance.stub(:current_git_branch, 'main') do
-          loop_instance.execute(:story_auto_squash)
-        end
+        Kernel.stub(:sleep, nil) do
+          loop_instance = McptaskRunner::WorkLoop.new(story_id: 123)
+          results = loop_instance.execute(:story_auto_squash)
 
-        assert_instance_of Array, results
-        assert_equal 1, results.length
-        assert_equal 'ci_failed', results.first['status']
+          assert_equal 2, results.length
+          assert_equal 'ci_failed', results.first['status']
+          assert_equal 'no_more_tasks', results.last['status']
+        end
       end
     end
   end

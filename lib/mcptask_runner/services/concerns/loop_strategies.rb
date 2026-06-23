@@ -248,7 +248,13 @@ module McptaskRunner
             break
           end
 
-          break if %w[no_more_tasks failure task_already_started ci_failed merge_failed merge_unverified quota_exceeded quota_exceeded_mid_task].include?(status)
+          if status == 'ci_failed'
+            Logger.info_stdout('[WorkLoop] CI failed (PR left open) — not a stop reason; story loop continues so the task is re-picked and fixed...')
+            sleep(2)
+            next
+          end
+
+          break if %w[no_more_tasks failure task_already_started merge_failed merge_unverified quota_exceeded quota_exceeded_mid_task].include?(status)
           break if quota_exceeded?(results)
 
           sleep(2)
@@ -307,7 +313,13 @@ module McptaskRunner
             break
           end
 
-          break if %w[no_more_tasks failure task_already_started ci_failed merge_failed merge_unverified quota_exceeded quota_exceeded_mid_task].include?(status)
+          if status == 'ci_failed'
+            Logger.info_stdout('[WorkLoop] CI failed (PR left open) — not a stop reason; loop continues so the task is re-picked and fixed...')
+            sleep(2)
+            next
+          end
+
+          break if %w[no_more_tasks failure task_already_started merge_failed merge_unverified quota_exceeded quota_exceeded_mid_task].include?(status)
           break if quota_exceeded?(results)
 
           sleep(2)
