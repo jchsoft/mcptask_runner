@@ -158,6 +158,7 @@ module McptaskRunner
     end
 
     def preexisting_test_errors_instruction
+      bug_dest = bug_destination_line
       <<~INSTRUCTION.strip
         PREEXISTING TEST ERRORS (CRITICAL):
         If tests fail in code you did NOT modify:
@@ -167,7 +168,7 @@ module McptaskRunner
            - mcptask://user (server="mcptask-online", LITERAL URI — no account suffix) → get relative_id
            - CreatePieceTool: account_code=<from CLAUDE.md>, piece_type="Task", task_type_code="bug",
              priority_code="urgent", project_id=<from CLAUDE.md>, assigned_user_id=<relative_id>
-             name="Fix: Padající testy - <description>"
+             #{bug_dest}name="Fix: Padající testy - <description>"
              description: failing tests, errors, branch/commit, interrupted task ID
         4. git checkout main (keep feature branch)
         5. Status "preexisting_test_errors"
@@ -180,6 +181,24 @@ module McptaskRunner
         was posted, so the PR cannot merge. Do NOT merge and do NOT claim it merged. If you
         cannot get bin/ci to exit 0 after retry → status "ci_failed" (PR stays open).
       INSTRUCTION
+    end
+
+    # Returns either a `parent_id: <id>, ` line for inclusion in the bug-piece
+    # CreatePieceTool call, or an empty string when no destination is configured.
+    # The trailing space is intentional so concatenation in the heredoc reads naturally.
+    def bug_destination_line
+      cfg = bug_destination_config
+      return '' unless cfg[:epic_relative_id].is_a?(Integer) && cfg[:epic_relative_id].positive?
+
+      label = cfg[:epic_name] ? " \"#{cfg[:epic_name]}\"" : ''
+      "parent_id: #{cfg[:epic_relative_id]},   # auto-bugs land in this Epic#{label}\n             "
+    end
+
+    def bug_destination_config
+      require 'mcptask_runner/services/concerns/bug_destination_config'
+      Concerns::BugDestinationConfig.load
+    rescue LoadError
+      { epic_relative_id: nil, epic_name: nil }
     end
 
     def run_local_ci_step(step_num:, verify_step_ref: nil)

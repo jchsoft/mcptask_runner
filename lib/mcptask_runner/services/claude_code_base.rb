@@ -118,6 +118,14 @@ module McptaskRunner
       "Launcher: config/launcher.yml override -> #{CLAUDE_COMMAND_PREFIX.join(' ')}"
     end
 
+    # One-line description of where auto-bug pieces will be created, for the boot banner.
+    # Mirrors model_source_description / launcher_source_description so the runner prints
+    # all three config-derived lines together at start.
+    def self.bug_destination_source_description
+      require_relative 'concerns/bug_destination_config'
+      Concerns::BugDestinationConfig.describe
+    end
+
     # Per-attempt streaming/termination flags. Collected into one struct so the host
     # class stays under Reek's TooManyInstanceVariables threshold.
     ExecutionState = Struct.new(

@@ -10,6 +10,12 @@ module McptaskRunner
   # creates a bug piece on mcptask.online, and attaches the most recent run log
   # plus relevant config files.
   #
+  # Bugs are routed into a dedicated Epic when config/bug_destination.yml is
+  # present in the project root — keeps auto-detected failures out of the
+  # regular backlog. Env override: MCPTASK_BUG_PARENT_ID (relative_id of the
+  # destination Epic) wins over the file, matching the "explicit beats config"
+  # pattern of the other MCPTASK_*_ID env vars.
+  #
   # Usage: rake mcptask_runner:bug_report
   class BugReporter
     MCP_SERVER_KEY = 'mcptask-online'
@@ -17,6 +23,7 @@ module McptaskRunner
     DEFAULT_PROJECT_ID = 69
     HTTP_TIMEOUT = 30
     ENV_CONFIGS = %w[.mcp.json .claude/settings.json .claude/settings.local.json].freeze
+    BUG_PARENT_ENV = 'MCPTASK_BUG_PARENT_ID'.freeze
 
     Error = Class.new(StandardError)
 
@@ -79,16 +86,18 @@ module McptaskRunner
     end
 
     def create_piece(title, description)
-      body = JSON.generate({
-        piece: {
-          name: title,
-          description: description,
-          piece_type: 'Task',
-          task_type_code: 'bug',
-          priority_code: 'high',
-          project_id: project_id
-        }
-      })
+      piece_attrs = {
+        name: title,
+        description: description,
+        piece_type: 'Task',
+        task_type_code: 'bug',
+        priority_code: 'high',
+        project_id: project_id
+      }
+      parent = bug_parent_id
+      piece_attrs[:parent_id] = parent if parent
+
+      body = JSON.generate({ piece: piece_attrs })
       response = http_post("/api/#{account_code}/pieces", body, 'Content-Type' => 'application/json')
       raise Error, "HTTP #{response.code} creating piece" unless response.is_a?(Net::HTTPSuccess)
 
@@ -96,6 +105,21 @@ module McptaskRunner
       data.dig('piece', 'relative_id') or raise Error, "no 'piece.relative_id' in create response"
     rescue JSON::ParserError => e
       raise Error, "invalid JSON from create piece: #{e.message}"
+    end
+
+    # Returns Integer relative_id of the Epic that should hold this bug, or nil to
+    # create at the project root. Priority: MCPTASK_BUG_PARENT_ID env > config/bug_destination.yml > nil.
+    def bug_parent_id
+      env_value = ENV[BUG_PARENT_ENV].to_s
+      return env_value.to_i if env_value.match?(/\A\d+\z/) && env_value.to_i.positive?
+
+      cfg = load_bug_destination_config
+      cfg[:epic_relative_id] if cfg[:epic_relative_id].is_a?(Integer) && cfg[:epic_relative_id].positive?
+    end
+
+    def load_bug_destination_config
+      require 'mcptask_runner/services/concerns/bug_destination_config'
+      Concerns::BugDestinationConfig.load
     end
 
     def attach_run_log(piece_id)

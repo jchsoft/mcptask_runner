@@ -40,6 +40,8 @@ detectors:
     max_statements: 75
   LongParameterList:
     max_params: 5
+    exclude:
+      - McptaskRunner::Installer # all kwargs default; constructor is a documented install-time builder, not a deep param list
   DuplicateMethodCall:
     max_calls: 5
   DataClump:
