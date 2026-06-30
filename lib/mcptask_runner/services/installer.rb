@@ -3,11 +3,15 @@
 require 'fileutils'
 require 'json'
 require 'rbconfig'
+require 'yaml'
 
 module McptaskRunner
   # Bootstraps mcptask_runner inside a host Rails project.
   # Part 1: copies bundled Claude Code skills into .claude/skills/.
   # Part 2: generates a macOS LaunchAgent plist for weekday scheduling.
+  # Part 3: asks which mcptask.online Epic should hold auto-detected bugs, and
+  #         writes config/bug_destination.yml so the runner + BugReporter CLI
+  #         route new bug pieces into that Epic instead of the project root.
   #
   # Usage: rake mcptask_runner:install
   class Installer
@@ -24,15 +28,22 @@ module McptaskRunner
       'headers' => { 'Authorization' => 'Bearer ${MCPTASK_TOKEN}' }
     }.freeze
 
+    BUG_DESTINATION_EXAMPLE = File.expand_path('../../../../config/bug_destination.yml.example', __dir__).freeze
+
     # dirs: optional override paths { launch_agents:, log_base: } — grouped so callers
     # (and tests) pass install destinations as one argument.
-    def initialize(target_dir: Dir.pwd, force: ENV['FORCE'] == '1', dirs: {}, mode: nil, platform: RbConfig::CONFIG['host_os'])
-      @target_dir        = File.expand_path(target_dir)
-      @force             = force
-      @launch_agents_dir = dirs[:launch_agents] || File.expand_path('~/Library/LaunchAgents')
-      @log_base_dir      = dirs[:log_base] || File.expand_path('~/logs/mcptask_runner')
-      @mode              = mode
-      @platform          = platform
+    # bug_dest: optional override { relative_id:, name: } for the auto-bug destination.
+    # Passing these skips the interactive prompt — used by tests and non-interactive installs.
+    def initialize(target_dir: Dir.pwd, force: ENV['FORCE'] == '1', dirs: {}, mode: nil, platform: RbConfig::CONFIG['host_os'],
+                   bug_dest: nil)
+      @target_dir            = File.expand_path(target_dir)
+      @force                 = force
+      @launch_agents_dir     = dirs[:launch_agents] || File.expand_path('~/Library/LaunchAgents')
+      @log_base_dir          = dirs[:log_base] || File.expand_path('~/logs/mcptask_runner')
+      @mode                  = mode
+      @platform              = platform
+      @bug_epic_relative_id  = bug_dest && bug_dest[:relative_id]
+      @bug_epic_name         = bug_dest && bug_dest[:name]
     end
 
     def self.call(**kwargs)
@@ -45,6 +56,7 @@ module McptaskRunner
       sync_permissions
       provision_tokens
       configure_mcp_json
+      configure_bug_destination
       generate_launch_agent
     end
 
@@ -108,6 +120,65 @@ module McptaskRunner
 
     def mcp_json_path
       File.join(@target_dir, '.mcp.json')
+    end
+
+    # Writes config/bug_destination.yml so the runner + BugReporter CLI route
+    # bug pieces into a dedicated Epic instead of the project root. Skipped
+    # automatically when the file already exists and FORCE is not set — the
+    # user can edit the file directly to retarget without re-running install.
+    # Pass epic_relative_id via the constructor to skip the interactive prompt
+    # (used by tests and non-interactive installs).
+    def configure_bug_destination
+      puts '[Installer] Configuring bug destination (Epic for auto-detected bugs)...'
+
+      path = bug_destination_path
+
+      if File.exist?(path) && !@force && @bug_epic_relative_id.nil?
+        puts "[Installer] #{path} already exists — leaving untouched (use FORCE=1 to retarget)"
+        return
+      end
+
+      id   = @bug_epic_relative_id
+      name = @bug_epic_name
+
+      if id.nil?
+        puts '[Installer] Enter the mcptask.online Epic where auto-detected runner bugs should land.'
+        puts '[Installer] (You can find the relative_id in the Epic URL: /pieces/<account>/<relative_id>)'
+        id = prompt_epic_relative_id
+      end
+
+      write_bug_destination_file(path: path, id: id, name: name)
+      if id.nil?
+        puts "[Installer] Bug destination left as project root (no Epic configured)"
+      else
+        puts "[Installer] Bug destination written: #{path}"
+        puts "[Installer] Auto-bugs will land in Epic ##{id}#{name ? " (#{name})" : ''}"
+      end
+    end
+
+    def bug_destination_path
+      File.join(@target_dir, 'config', 'bug_destination.yml')
+    end
+
+    def prompt_epic_relative_id
+      $stdout.print 'Epic relative_id (positive integer, blank to keep project root): '
+      $stdout.flush
+      raw = $stdin.gets&.chomp.to_s.strip
+      return nil if raw.empty?
+      return raw.to_i if raw.match?(/\A\d+\z/) && raw.to_i.positive?
+
+      raise Error, "Invalid Epic relative_id: #{raw.inspect}. Expected a positive integer or blank."
+    end
+
+    def write_bug_destination_file(path:, id:, name:)
+      FileUtils.mkdir_p(File.dirname(path))
+      payload = id.nil? ? {} : { 'epic_relative_id' => id.to_i }
+      payload['epic_name'] = name.to_s unless name.nil? || name.to_s.empty?
+      yaml = YAML.dump(payload)
+      # Drop trailing newline so we can append a single-line "# generated by…" comment without
+      # leaving an empty line the parser would treat as a broken key.
+      yaml = yaml.chomp + " # generated by McptaskRunner::Installer\n"
+      File.write(path, yaml)
     end
 
     def write_mcp_json(path, data)

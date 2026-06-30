@@ -15,12 +15,14 @@ class InstallerTest < Minitest::Test
     @log_base_dir    = File.join(@tmpdir, 'logs')
     FileUtils.mkdir_p(@target_dir)
 
-    @prev_mt  = ENV.delete('MCPTASK_TOKEN')
+    @prev_mt     = ENV.delete('MCPTASK_TOKEN')
+    @prev_stdin  = $stdin
   end
 
   def teardown
     FileUtils.remove_entry(@tmpdir) if File.exist?(@tmpdir)
     ENV['MCPTASK_TOKEN'] = @prev_mt if @prev_mt
+    $stdin = @prev_stdin if @prev_stdin
   end
 
   # --- helpers ---
@@ -264,5 +266,122 @@ class InstallerTest < Minitest::Test
     raw = File.read(mcp_json_path)
     assert_includes raw, 'Bearer ${MCPTASK_TOKEN}'
     refute_match(/Bearer [A-Za-z0-9._-]{8,}/, raw)
+  end
+
+  # --- bug destination config ---
+
+  def bug_destination_path
+    File.join(@target_dir, 'config', 'bug_destination.yml')
+  end
+
+  def bug_destination_content
+    assert File.exist?(bug_destination_path), "Config not found at #{bug_destination_path}"
+    YAML.safe_load(File.read(bug_destination_path))
+  end
+
+  def test_writes_bug_destination_file_when_epic_id_provided
+    capture_io { build(bug_dest: { relative_id: 42_001 }).call }
+
+    payload = bug_destination_content
+    assert_equal 42_001, payload['epic_relative_id']
+  end
+
+  def test_writes_bug_destination_with_epic_name_when_provided
+    capture_io { build(bug_dest: { relative_id: 42_001, name: 'Auto-bugs' }).call }
+
+    payload = bug_destination_content
+    assert_equal 42_001, payload['epic_relative_id']
+    assert_equal 'Auto-bugs', payload['epic_name']
+  end
+
+  def test_omits_epic_name_when_not_provided
+    capture_io { build(bug_dest: { relative_id: 42_001 }).call }
+
+    payload = bug_destination_content
+    refute payload.key?('epic_name'), 'epic_name should be absent when not provided'
+  end
+
+  def test_writes_root_marker_when_blank_epic_id_and_no_existing_file
+    # blank input → leaves project-root placement; payload stays empty + a comment.
+    # Use stdin to simulate the interactive blank.
+    $stdin = StringIO.new("\n")
+    capture_io { build.call }
+
+    assert File.exist?(bug_destination_path), 'root marker file should still be written'
+    payload = bug_destination_content
+    assert_nil payload['epic_relative_id']
+  ensure
+    $stdin = @prev_stdin if @prev_stdin
+  end
+
+  def test_does_not_overwrite_existing_destination_without_force
+    FileUtils.mkdir_p(File.join(@target_dir, 'config'))
+    File.write(bug_destination_path, "epic_relative_id: 99999\nepic_name: existing\n")
+
+    capture_io { build.call }  # no bug_epic_relative_id → no override
+
+    payload = YAML.safe_load(File.read(bug_destination_path))
+    assert_equal 99_999, payload['epic_relative_id'], 'existing file must NOT be overwritten when no epic id provided'
+    assert_equal 'existing', payload['epic_name']
+  end
+
+  def test_explicit_epic_id_overrides_existing_without_force
+    FileUtils.mkdir_p(File.join(@target_dir, 'config'))
+    File.write(bug_destination_path, "epic_relative_id: 99999\nepic_name: existing\n")
+
+    capture_io { build(bug_dest: { relative_id: 42_001 }).call }
+
+    payload = YAML.safe_load(File.read(bug_destination_path))
+    assert_equal 42_001, payload['epic_relative_id'], 'explicit epic id always wins, even without force'
+  end
+
+  def test_force_overwrites_existing_destination
+    FileUtils.mkdir_p(File.join(@target_dir, 'config'))
+    File.write(bug_destination_path, "epic_relative_id: 99999\n")
+
+    capture_io { build(force: true, bug_dest: { relative_id: 42_001 }).call }
+
+    payload = bug_destination_content
+    assert_equal 42_001, payload['epic_relative_id']
+  end
+
+  def test_keeps_existing_destination_when_no_epic_id_provided_and_no_force
+    FileUtils.mkdir_p(File.join(@target_dir, 'config'))
+    File.write(bug_destination_path, "epic_relative_id: 12345\nepic_name: keep\n")
+
+    out, = capture_io { build.call }
+
+    assert_match 'leaving untouched', out
+    payload = YAML.safe_load(File.read(bug_destination_path))
+    assert_equal 12_345, payload['epic_relative_id']
+    assert_equal 'keep', payload['epic_name']
+  end
+
+  def test_prompts_for_epic_relative_id_interactively
+    $stdin = StringIO.new("77777\n")
+    out, = capture_io { build.call }
+
+    assert_match 'Epic relative_id', out
+    assert_match 'Bug destination written', out
+    payload = bug_destination_content
+    assert_equal 77_777, payload['epic_relative_id']
+  ensure
+    $stdin = @prev_stdin if @prev_stdin
+  end
+
+  def test_raises_on_non_numeric_epic_input
+    $stdin = StringIO.new("not-a-number\n")
+    err = assert_raises(Klass::Error) { capture_io { build.call } }
+    assert_match(/Invalid Epic relative_id/, err.message)
+  ensure
+    $stdin = @prev_stdin if @prev_stdin
+  end
+
+  def test_raises_on_zero_or_negative_epic_input
+    $stdin = StringIO.new("0\n")
+    err = assert_raises(Klass::Error) { capture_io { build.call } }
+    assert_match(/Invalid Epic relative_id/, err.message)
+  ensure
+    $stdin = @prev_stdin if @prev_stdin
   end
 end

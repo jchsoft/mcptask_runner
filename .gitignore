@@ -19,3 +19,5 @@
 # Per-host Claude launcher/model overrides (not for the repo)
 /config/launcher.yml
 /config/models.yml
+# Per-host bug destination (which Epic should auto-bugs land in)
+/config/bug_destination.yml

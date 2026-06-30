@@ -173,6 +173,112 @@ class BugReporterTest < Minitest::Test
     end
   end
 
+  # --- bug destination config (parent_id) ---
+
+  def test_creates_piece_at_project_root_when_no_destination_configured
+    in_tmpdir do
+      ENV['MCPTASK_TOKEN']    = 'fake-token'
+      ENV['MCPTASK_BASE_URL'] = 'https://mcptask.online'
+      ENV['MCPTASK_ACCOUNT']  = 'testacct'
+      ENV.delete(Klass::BUG_PARENT_ENV)
+
+      $stdin = StringIO.new("Title\nDesc\n\n")
+
+      create_resp = json_response(201, { 'piece' => { 'relative_id' => 100 } })
+
+      captured_bodies = []
+      McptaskRunner::Logger.stub(:latest_run_log, nil) do
+        with_capturing_http([create_resp], captured_bodies) do
+          capture_io { Klass.call }
+        end
+      end
+
+      create_body = JSON.parse(captured_bodies[0])
+      refute create_body.dig('piece', 'parent_id'), 'parent_id must be absent when no destination is configured'
+    end
+  end
+
+  def test_creates_piece_in_epic_when_config_present
+    in_tmpdir do
+      ENV['MCPTASK_TOKEN']    = 'fake-token'
+      ENV['MCPTASK_BASE_URL'] = 'https://mcptask.online'
+      ENV['MCPTASK_ACCOUNT']  = 'testacct'
+      ENV.delete(Klass::BUG_PARENT_ENV)
+
+      write_bug_destination_config("epic_relative_id: 99999\nepic_name: Auto-bugs\n")
+
+      $stdin = StringIO.new("Title\nDesc\n\n")
+
+      create_resp = json_response(201, { 'piece' => { 'relative_id' => 101 } })
+
+      captured_bodies = []
+      McptaskRunner::Logger.stub(:latest_run_log, nil) do
+        with_capturing_http([create_resp], captured_bodies) do
+          capture_io { Klass.call }
+        end
+      end
+
+      create_body = JSON.parse(captured_bodies[0])
+      assert_equal 99_999, create_body.dig('piece', 'parent_id')
+    end
+  end
+
+  def test_env_var_overrides_config_file
+    in_tmpdir do
+      ENV['MCPTASK_TOKEN']    = 'fake-token'
+      ENV['MCPTASK_BASE_URL'] = 'https://mcptask.online'
+      ENV['MCPTASK_ACCOUNT']  = 'testacct'
+      ENV[Klass::BUG_PARENT_ENV] = '88888'
+
+      write_bug_destination_config("epic_relative_id: 99999\n")
+
+      $stdin = StringIO.new("Title\nDesc\n\n")
+
+      create_resp = json_response(201, { 'piece' => { 'relative_id' => 102 } })
+
+      captured_bodies = []
+      McptaskRunner::Logger.stub(:latest_run_log, nil) do
+        with_capturing_http([create_resp], captured_bodies) do
+          capture_io { Klass.call }
+        end
+      end
+
+      create_body = JSON.parse(captured_bodies[0])
+      assert_equal 88_888, create_body.dig('piece', 'parent_id'), 'env var must override config file'
+    end
+  end
+
+  def test_invalid_env_var_falls_back_to_config
+    in_tmpdir do
+      ENV['MCPTASK_TOKEN']    = 'fake-token'
+      ENV['MCPTASK_BASE_URL'] = 'https://mcptask.online'
+      ENV['MCPTASK_ACCOUNT']  = 'testacct'
+      ENV[Klass::BUG_PARENT_ENV] = 'not-a-number'
+
+      write_bug_destination_config("epic_relative_id: 12345\n")
+
+      $stdin = StringIO.new("Title\nDesc\n\n")
+
+      create_resp = json_response(201, { 'piece' => { 'relative_id' => 103 } })
+
+      captured_bodies = []
+      McptaskRunner::Logger.stub(:latest_run_log, nil) do
+        with_capturing_http([create_resp], captured_bodies) do
+          capture_io { Klass.call }
+        end
+      end
+
+      create_body = JSON.parse(captured_bodies[0])
+      assert_equal 12_345, create_body.dig('piece', 'parent_id')
+    end
+  end
+
+  def write_bug_destination_config(yaml)
+    dir = File.join(@tmpdir, 'config')
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, 'bug_destination.yml'), yaml)
+  end
+
   private
 
   def in_tmpdir

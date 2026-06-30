@@ -1,0 +1,21 @@
+# Where the runner + BugReporter CLI should create bug pieces.
+#
+# Copy this file to config/bug_destination.yml in the project where the runner
+# runs and fill in epic_relative_id. The file is gitignored — each host keeps
+# its own copy and edits are never committed.
+#
+# epic_relative_id is the numeric id of an existing Epic piece in the same
+# mcptask.online account as the runner (see CLAUDE.md → account_code). Find it
+# in the URL when viewing the Epic: /pieces/<account>/<relative_id>.
+#
+# Why route bugs into an Epic instead of the project root?
+# - Epics have no capacity limit; tasks created at the project root compete with
+#   the user's regular backlog and quickly starve it.
+# - Keeping auto-detected failures in one place makes triage easier (one card,
+#   one assignee, one place to clear when the run is healthy again).
+#
+# The Installer (`rake mcptask_runner:install`) writes this file for you after
+# asking which Epic to use. Re-run it with FORCE=1 to overwrite the existing
+# destination. Delete the file to revert to project-root placement.
+epic_relative_id: 12345   # ← replace with your Epic's relative_id
+epic_name: "Auto-bugs"    # optional label, surfaced in boot banner + bug piece
