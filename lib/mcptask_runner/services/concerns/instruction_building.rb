@@ -104,6 +104,7 @@ module McptaskRunner
           - Don't poll/retry in loops (each poll re-sends full history); size large files/logs before reading.
           - Be terse: no narration, no summaries of what you did (the user sees the diff). TASKRUNNER_RESULT JSON unchanged.
           - ALWAYS respond in English — even when the task description is in Czech or another language.
+          - IMAGE ATTACHMENTS cost ~150K tokens each here (base64 is counted as text). NEVER `Read` a `.png`/screenshot directly. Convert + downscale first, then Read the `.jpg`: `sips -s format jpeg -Z 1280 /tmp/x.png --out /tmp/x.jpg`. Prefer source + a `pr_screenshot` system test over reading any image.
         INSTRUCTION
       end
 
