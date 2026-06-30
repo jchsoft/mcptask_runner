@@ -269,92 +269,119 @@ class InstallerTest < Minitest::Test
   end
 
   # --- bug destination config ---
+  #
+  # The Installer writes the bug destination into the unified
+  # config/mcptask_runner.yml under the `bug_destination:` key. A pre-existing
+  # legacy config/bug_destination.yml is still respected (the loader reads
+  # it with higher precedence than the unified file), so the tests below
+  # create it when they want to simulate an un-migrated host.
 
   def bug_destination_path
+    File.join(@target_dir, 'config', 'mcptask_runner.yml')
+  end
+
+  def legacy_bug_destination_path
     File.join(@target_dir, 'config', 'bug_destination.yml')
   end
 
-  def bug_destination_content
+  def bug_destination_section
     assert File.exist?(bug_destination_path), "Config not found at #{bug_destination_path}"
-    YAML.safe_load(File.read(bug_destination_path))
+    payload = YAML.safe_load(File.read(bug_destination_path))
+    assert payload.is_a?(Hash), "unified config must be a Hash, got #{payload.class}"
+    payload.fetch('bug_destination', {})
   end
 
-  def test_writes_bug_destination_file_when_epic_id_provided
+  def test_writes_bug_destination_section_when_epic_id_provided
     capture_io { build(bug_dest: { relative_id: 42_001 }).call }
 
-    payload = bug_destination_content
-    assert_equal 42_001, payload['epic_relative_id']
+    section = bug_destination_section
+    assert_equal 42_001, section['epic_relative_id']
   end
 
   def test_writes_bug_destination_with_epic_name_when_provided
     capture_io { build(bug_dest: { relative_id: 42_001, name: 'Auto-bugs' }).call }
 
-    payload = bug_destination_content
-    assert_equal 42_001, payload['epic_relative_id']
-    assert_equal 'Auto-bugs', payload['epic_name']
+    section = bug_destination_section
+    assert_equal 42_001, section['epic_relative_id']
+    assert_equal 'Auto-bugs', section['epic_name']
   end
 
   def test_omits_epic_name_when_not_provided
     capture_io { build(bug_dest: { relative_id: 42_001 }).call }
 
-    payload = bug_destination_content
-    refute payload.key?('epic_name'), 'epic_name should be absent when not provided'
+    section = bug_destination_section
+    refute section.key?('epic_name'), 'epic_name should be absent when not provided'
   end
 
   def test_writes_root_marker_when_blank_epic_id_and_no_existing_file
-    # blank input → leaves project-root placement; payload stays empty + a comment.
-    # Use stdin to simulate the interactive blank.
+    # blank input → leaves project-root placement; bug_destination section is
+    # written but empty so the user can later retarget by editing in place.
     $stdin = StringIO.new("\n")
     capture_io { build.call }
 
-    assert File.exist?(bug_destination_path), 'root marker file should still be written'
-    payload = bug_destination_content
-    assert_nil payload['epic_relative_id']
+    assert File.exist?(bug_destination_path), 'unified config should still be written'
+    section = bug_destination_section
+    assert_nil section['epic_relative_id']
   ensure
     $stdin = @prev_stdin if @prev_stdin
   end
 
   def test_does_not_overwrite_existing_destination_without_force
     FileUtils.mkdir_p(File.join(@target_dir, 'config'))
-    File.write(bug_destination_path, "epic_relative_id: 99999\nepic_name: existing\n")
+    File.write(bug_destination_path, "bug_destination:\n  epic_relative_id: 99999\n  epic_name: existing\n")
 
     capture_io { build.call }  # no bug_epic_relative_id → no override
 
-    payload = YAML.safe_load(File.read(bug_destination_path))
-    assert_equal 99_999, payload['epic_relative_id'], 'existing file must NOT be overwritten when no epic id provided'
-    assert_equal 'existing', payload['epic_name']
+    section = bug_destination_section
+    assert_equal 99_999, section['epic_relative_id'], 'existing section must NOT be overwritten when no epic id provided'
+    assert_equal 'existing', section['epic_name']
   end
 
   def test_explicit_epic_id_overrides_existing_without_force
     FileUtils.mkdir_p(File.join(@target_dir, 'config'))
-    File.write(bug_destination_path, "epic_relative_id: 99999\nepic_name: existing\n")
+    File.write(bug_destination_path, "bug_destination:\n  epic_relative_id: 99999\n  epic_name: existing\n")
 
     capture_io { build(bug_dest: { relative_id: 42_001 }).call }
 
-    payload = YAML.safe_load(File.read(bug_destination_path))
-    assert_equal 42_001, payload['epic_relative_id'], 'explicit epic id always wins, even without force'
+    section = bug_destination_section
+    assert_equal 42_001, section['epic_relative_id'], 'explicit epic id always wins, even without force'
   end
 
   def test_force_overwrites_existing_destination
     FileUtils.mkdir_p(File.join(@target_dir, 'config'))
-    File.write(bug_destination_path, "epic_relative_id: 99999\n")
+    File.write(bug_destination_path, "bug_destination:\n  epic_relative_id: 99999\n")
 
     capture_io { build(force: true, bug_dest: { relative_id: 42_001 }).call }
 
-    payload = bug_destination_content
-    assert_equal 42_001, payload['epic_relative_id']
+    section = bug_destination_section
+    assert_equal 42_001, section['epic_relative_id']
   end
 
   def test_keeps_existing_destination_when_no_epic_id_provided_and_no_force
     FileUtils.mkdir_p(File.join(@target_dir, 'config'))
-    File.write(bug_destination_path, "epic_relative_id: 12345\nepic_name: keep\n")
+    File.write(bug_destination_path, "bug_destination:\n  epic_relative_id: 12345\n  epic_name: keep\n")
 
     out, = capture_io { build.call }
 
     assert_match 'leaving untouched', out
-    payload = YAML.safe_load(File.read(bug_destination_path))
-    assert_equal 12_345, payload['epic_relative_id']
-    assert_equal 'keep', payload['epic_name']
+    section = bug_destination_section
+    assert_equal 12_345, section['epic_relative_id']
+    assert_equal 'keep', section['epic_name']
+  end
+
+  def test_legacy_bug_destination_file_is_left_alone
+    FileUtils.mkdir_p(File.join(@target_dir, 'config'))
+    File.write(legacy_bug_destination_path, "epic_relative_id: 99999\nepic_name: legacy\n")
+
+    capture_io { build(bug_dest: { relative_id: 42_001 }).call }
+
+    # Legacy file is preserved so the existing loader can still see it.
+    legacy_payload = YAML.safe_load(File.read(legacy_bug_destination_path))
+    assert_equal 99_999, legacy_payload['epic_relative_id']
+
+    # Unified file is also written with the new value.
+    section = bug_destination_section
+    assert_equal 42_001, section['epic_relative_id']
   end
 
   def test_prompts_for_epic_relative_id_interactively
@@ -363,8 +390,8 @@ class InstallerTest < Minitest::Test
 
     assert_match 'Epic relative_id', out
     assert_match 'Bug destination written', out
-    payload = bug_destination_content
-    assert_equal 77_777, payload['epic_relative_id']
+    section = bug_destination_section
+    assert_equal 77_777, section['epic_relative_id']
   ensure
     $stdin = @prev_stdin if @prev_stdin
   end

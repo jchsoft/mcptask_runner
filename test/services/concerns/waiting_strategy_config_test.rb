@@ -116,4 +116,33 @@ class WaitingStrategyConfigTest < Minitest::Test
     assert_match(/short_wait=30m/, desc)
     assert_match(/long_wait=60m/, desc)
   end
+
+  # --- unified config/mcptask_runner.yml path ---
+
+  def write_unified_config(yaml)
+    dir = File.join(@tmpdir, 'config')
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, 'mcptask_runner.yml'), yaml)
+  end
+
+  def test_unified_config_overrides_defaults
+    write_unified_config("waiting_strategy:\n  short_wait_minutes: 5\n  long_wait_minutes: 15\n")
+    cfg = Klass.load
+    assert_equal 5, cfg[:short_wait_minutes]
+    assert_equal 15, cfg[:long_wait_minutes]
+  end
+
+  def test_unified_config_wins_over_legacy_file
+    write_unified_config("waiting_strategy:\n  short_wait_minutes: 5\n")
+    write_config("short_wait_minutes: 99\n")
+    cfg = Klass.load
+    assert_equal 5, cfg[:short_wait_minutes], 'unified config must take precedence over legacy file'
+  end
+
+  def test_legacy_file_used_when_unified_config_lacks_waiting_strategy
+    write_config("short_wait_minutes: 7\nlong_wait_minutes: 42\n")
+    cfg = Klass.load
+    assert_equal 7, cfg[:short_wait_minutes]
+    assert_equal 42, cfg[:long_wait_minutes]
+  end
 end

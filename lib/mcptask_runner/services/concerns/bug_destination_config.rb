@@ -13,28 +13,34 @@ module McptaskRunner
     # capacity limit, so the runner can pile failures there indefinitely without
     # starving the regular task queue.
     #
-    # File format (config/bug_destination.yml, gitignored per-host):
-    #   epic_relative_id: 12345   # Epic piece relative_id in the same account
-    #   epic_name: "Auto-bugs"    # optional human label, surfaced in logs
+    # Reads from the unified `config/mcptask_runner.yml` (under the
+    # `bug_destination:` key) or the legacy `config/bug_destination.yml`.
+    # When neither is present, callers fall back to project-root placement.
+    #
+    # Unified format (config/mcptask_runner.yml):
+    #   bug_destination:
+    #     epic_relative_id: 12345   # Epic piece relative_id in the same account
+    #     epic_name: "Auto-bugs"    # optional human label, surfaced in logs
+    #
+    # Legacy format (config/bug_destination.yml, gitignored per-host):
+    #   epic_relative_id: 12345
+    #   epic_name: "Auto-bugs"
     #
     # Resolved relative to Dir.pwd so the same code path works both inside the
     # gem's own test suite (Dir.pwd = the repo) and inside a host Rails project
     # (Dir.pwd = the project root).
     module BugDestinationConfig
-      # Filename only — the directory is resolved at call time via Dir.pwd so
-      # tests can chdir into a tmpdir without redefining a frozen constant.
+      # Legacy filename — kept for backward compat with hosts that haven't
+      # migrated to the unified config/mcptask_runner.yml yet.
       FILE_NAME = 'config/bug_destination.yml'.freeze
 
       module_function
 
       # Returns a Hash with :epic_relative_id (Integer or nil) and :epic_name (String or nil).
       # Never raises — a missing/invalid file is treated as "no config", same as
-      # config/models.yml and config/launcher.yml. Callers branch on the nil case.
+      # the model and launcher configs. Callers branch on the nil case.
       def load
-        path = file_path
-        return missing unless File.exist?(path)
-
-        data = YAML.safe_load_file(path) || {}
+        data = load_raw
         raw_id = data['epic_relative_id']
         epic_relative_id = raw_id.is_a?(Integer) ? raw_id : raw_id.to_s.match?(/\A\d+\z/) ? raw_id.to_i : nil
         epic_name = data['epic_name'].is_a?(String) ? data['epic_name'].strip : nil
@@ -57,10 +63,25 @@ module McptaskRunner
       def describe
         cfg = load
         if cfg[:epic_relative_id].nil?
-          'Bug destination: project root (no config/bug_destination.yml)'
+          'Bug destination: project root (no bug destination configured)'
         else
           name = cfg[:epic_name] ? " (#{cfg[:epic_name]})" : ''
           "Bug destination: Epic ##{cfg[:epic_relative_id]}#{name}"
+        end
+      end
+
+      # Reads the unified config first, then the legacy file. Returns {} when
+      # neither has data — keeps `load` above free of duplicate fallback logic.
+      def load_raw
+        require_relative 'mcptask_runner_config'
+        unified = McptaskRunnerConfig.load
+        bd = unified['bug_destination']
+        if bd.is_a?(Hash) && !bd.empty?
+          bd
+        elsif File.exist?(file_path)
+          YAML.safe_load_file(file_path) || {}
+        else
+          {}
         end
       end
     end
