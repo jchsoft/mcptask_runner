@@ -126,6 +126,14 @@ module McptaskRunner
       Concerns::BugDestinationConfig.describe
     end
 
+    # One-line description of the active WaitingStrategy durations. Surfaces the
+    # per-host override (config/waiting_strategy.yml) in the boot banner so
+    # operators can spot a wrong short_wait at a glance.
+    def self.waiting_strategy_source_description
+      require_relative 'concerns/waiting_strategy_config'
+      Concerns::WaitingStrategyConfig.describe
+    end
+
     # Per-attempt streaming/termination flags. Collected into one struct so the host
     # class stays under Reek's TooManyInstanceVariables threshold.
     ExecutionState = Struct.new(

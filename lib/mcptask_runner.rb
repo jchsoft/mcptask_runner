@@ -34,6 +34,7 @@ require "mcptask_runner/services/decider"
 require "mcptask_runner/services/daily_scheduler"
 require "mcptask_runner/services/waiting_strategy"
 require "mcptask_runner/services/concerns/bug_destination_config"
+require "mcptask_runner/services/concerns/waiting_strategy_config"
 require "mcptask_runner/event_stream"
 require "mcptask_runner/railtie"
 

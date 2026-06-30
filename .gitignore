@@ -21,3 +21,5 @@
 /config/models.yml
 # Per-host bug destination (which Epic should auto-bugs land in)
 /config/bug_destination.yml
+# Per-host WaitingStrategy duration overrides (short_wait_minutes / long_wait_minutes)
+/config/waiting_strategy.yml
