@@ -23,8 +23,13 @@ module McptaskRunner
     MUTATING_TOOLS = %w[Edit Write NotebookEdit].freeze
     # Polling helpers — same-input re-invocation is by design (poll CI/test/lock until done).
     # Excluded from loop_signature detection or every CI wait > 4 invocations would false-positive.
+    # ALL Skill calls are treated as polling: Skill is a dispatch to a sub-routine, not a unit of
+    # work itself. Same skill invoked 4× is not a stall — it's the agent legitimately dispatching
+    # the same skill with the same args. Genuine hangs inside a Skill are caught by the hung_tool
+    # watchdog (TOOL_HANG_TIMEOUTS long kill = 2700s). The historical 4× same-skill kill had no
+    # real stall signal — it just murdered agents that were working normally.
     POLLING = {
-      skills: %w[ci-wait test-wait wait-unlock].freeze,
+      skills: :all, # every Skill invocation is exempt from loop_signature detection
       bash_re: %r{\.claude/bin/(?:ci_wait|test_wait|wait_unlock)\b}.freeze
     }.freeze
 
@@ -64,7 +69,7 @@ module McptaskRunner
 
     def polling_call?(name, input)
       case name
-      when 'Skill' then POLLING[:skills].include?(input['skill'])
+      when 'Skill' then POLLING[:skills] == :all # every Skill invocation is exempt
       when 'Bash'  then input['command'].to_s.match?(POLLING[:bash_re])
       end
     end

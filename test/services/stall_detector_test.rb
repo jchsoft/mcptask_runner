@@ -139,7 +139,8 @@ class StallDetectorTest < Minitest::Test
     assert_nil stall
   end
 
-  # ---- Polling exemption (ci-wait/test-wait/wait-unlock are designed for re-invocation) ----
+  # ---- Polling exemption (Skill tool is a dispatch — every Skill invocation exempt; for bash
+  # only ci-wait/test-wait/wait-unlock script paths are exempt by regex) ----
 
   def test_polling_skill_ci_wait_never_triggers_loop_signature
     5.times do
@@ -162,6 +163,23 @@ class StallDetectorTest < Minitest::Test
     end
   end
 
+  # Skill is a wrapper for sub-routine dispatch — repeated invocations are not a stall signal.
+  # The hung_tool watchdog (LONG_RUNNING_TOOLS includes 'Skill', kill 2700s) catches genuine hangs.
+  def test_any_skill_repeat_is_exempt_from_loop_signature
+    8.times do
+      stall = @detector.observe_tool_use(tool_use('Skill', { 'skill' => 'some-other-skill', 'args' => 'x' }))
+      assert_nil stall, 'Any Skill invocation must be exempt from loop_signature detection'
+    end
+  end
+
+  def test_skill_with_string_path_input_is_also_exempt_from_loop_signature
+    # Claude Code sends Skill input as either Hash or file path string — both must be exempt.
+    8.times do
+      stall = @detector.observe_tool_use(tool_use('Skill', { 'input' => '/Users/x/.claude/skills/code-simplifier/SKILL.md' }))
+      assert_nil stall
+    end
+  end
+
   def test_polling_bash_ci_wait_script_never_triggers_loop_signature
     cmd = '~/.claude/bin/ci_wait "/log/ci.log" "self" 540'
     5.times do
@@ -178,13 +196,8 @@ class StallDetectorTest < Minitest::Test
     end
   end
 
-  def test_non_polling_skill_still_stalls_on_loop_signature
-    4.times { @detector.observe_tool_use(tool_use('Skill', { 'skill' => 'some-other-skill', 'args' => 'x' })) }
-    stall = @detector.observe_tool_use(tool_use('Skill', { 'skill' => 'some-other-skill', 'args' => 'x' }))
-
-    refute_nil stall
-    assert_equal :loop_signature, stall.reason
-  end
+  # Removed: test_non_polling_skill_still_stalls_on_loop_signature — Skill is a dispatch wrapper,
+  # not a unit of work, so it is now fully exempt from loop_signature detection.
 
   def test_non_polling_bash_still_stalls_on_loop_signature
     cmd = 'grep ci_wait some-other-log'  # mentions ci_wait but not the script path
