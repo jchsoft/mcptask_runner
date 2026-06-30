@@ -1,0 +1,80 @@
+# mcptask_runner unified config (OPTIONAL).
+#
+# Copy to config/mcptask_runner.yml in the project where the runner runs to
+# override defaults without source-code changes. The file is gitignored —
+# each host keeps its own copy and edits are never committed.
+#
+# Each top-level key is OPTIONAL — omit any section to keep the corresponding
+# default. Order of lookup (highest priority first):
+#   1. config/mcptask_runner.yml (this file)
+#   2. legacy siblings (config/models.yml, config/launcher.yml,
+#      config/bug_destination.yml, config/waiting_strategy.yml)
+#   3. Built-in defaults (generic model aliases / project-root bug placement /
+#      30 min short wait / 60 min long wait)
+#
+# Hosts can migrate at their own pace: keep the legacy files alongside this
+# one, the legacy values win, then delete the legacy files when the unified
+# file is fully populated.
+#
+# --- Models: per-spice-level Claude model IDs ---
+#
+# The three keys map to the runner's spice levels. The pinned IDs drive BOTH
+# the main --model flag AND forked skills/subagents (model: haiku|sonnet|opus
+# in their frontmatter), which the runner exports as ANTHROPIC_DEFAULT_*_MODEL
+# — so on a host routed through a non-Anthropic backend you must pin all three,
+# or forks die with "model ... may not exist".
+#
+# models:
+#   genius: 'claude-opus-4-8'
+#   smart: 'claude-sonnet-4-6'
+#   primitive: 'claude-haiku-4-5-20251001'
+#
+# Example — route every level through an ollama-served model:
+# models:
+#   genius: 'minimax-m3:cloud'
+#   smart: 'minimax-m3:cloud'
+#   primitive: 'minimax-m3:cloud'
+#
+# --- Launcher: per-project launch command override ---
+#
+# `command:` REPLACES the leading `[claude]` of the spawned process. The runner
+# still appends its own flags afterwards:
+#   <command> -p <instructions> --model <id> --output-format=stream-json --verbose ...
+#
+# The model (--model <id>) still comes from the `models:` section above, NOT
+# from here. To test an alternate backend model, map a spice level there.
+#
+# launcher:
+#   command: [ollama, launch, claude]
+#
+# --- Bug destination: where auto-bug pieces should land on mcptask.online ---
+#
+# Routes runner-detected bug pieces into a dedicated Epic so they don't
+# pollute the regular task backlog. epic_relative_id is the numeric id of an
+# existing Epic piece in the same mcptask.online account (see CLAUDE.md →
+# account_code). Find it in the URL when viewing the Epic:
+# /pieces/<account>/<relative_id>. epic_name is an optional human label that
+# surfaces in the boot banner + bug piece name.
+#
+# Omit the section (or leave it empty) to keep the default: bugs land at the
+# project root.
+#
+# bug_destination:
+#   epic_relative_id: 12345   # ← replace with your Epic's relative_id
+#   epic_name: "Auto-bugs"    # optional label
+#
+# --- Waiting strategy: short/long wait durations ---
+#
+# Two keys, both MINUTES, positive integers only:
+#   short_wait_minutes — wait between retries in today_auto_squash mode
+#                        (no task picked up before the end of workday). Default: 30.
+#   long_wait_minutes  — wait between retries in daily mode (no task picked up
+#                        during a daily run). Default: 60.
+#
+# Hosts that benefit from a tight feedback loop can shorten both; quiet hosts
+# can leave the section out to use defaults. The fallback values match the
+# original hard-coded durations, so an empty file is a safe no-op.
+#
+# waiting_strategy:
+#   short_wait_minutes: 5
+#   long_wait_minutes: 30

@@ -23,3 +23,5 @@
 /config/bug_destination.yml
 # Per-host WaitingStrategy duration overrides (short_wait_minutes / long_wait_minutes)
 /config/waiting_strategy.yml
+# Per-host unified mcptask_runner config (supersedes the four legacy files above)
+/config/mcptask_runner.yml

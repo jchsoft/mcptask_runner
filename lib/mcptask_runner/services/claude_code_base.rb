@@ -66,47 +66,83 @@ module McptaskRunner
 
     # Spice-level => Claude model ID mapping.
     #
-    # The host project (where the runner runs) may provide config/models.yml to PIN
-    # specific versioned IDs (e.g. standard 200K-context variants, no [1m] suffix) so
-    # context overflows fail fast at ~200K instead of growing to 1M across --continue
-    # retry chains. When that file is absent we fall back to generic, unversioned CLI
-    # aliases — Claude resolves them to its current default models.
+    # The host project (where the runner runs) may provide config/mcptask_runner.yml
+    # (or the legacy config/models.yml) to PIN specific versioned IDs (e.g. standard
+    # 200K-context variants, no [1m] suffix) so context overflows fail fast at ~200K
+    # instead of growing to 1M across --continue retry chains. When neither is present
+    # we fall back to generic, unversioned CLI aliases — Claude resolves them to its
+    # current default models.
     GENERIC_MODEL_IDS = {
       'genius' => 'opus',
       'smart' => 'sonnet',
       'primitive' => 'haiku'
     }.freeze
 
-    MODELS_FILE = File.join(Dir.pwd, 'config', 'models.yml').freeze
-    MODEL_IDS_FROM_FILE = File.exist?(MODELS_FILE)
-    MODEL_IDS = (MODEL_IDS_FROM_FILE ? YAML.load_file(MODELS_FILE) : GENERIC_MODEL_IDS).freeze
+    # Source of truth: config/mcptask_runner.yml (unified config), then the legacy
+    # config/models.yml for hosts that haven't migrated yet. Either file alone is
+    # sufficient — we don't require both, and we don't merge across them.
+    LEGACY_MODELS_FILE = File.join(Dir.pwd, 'config', 'models.yml').freeze
+
+    # Reads models from the unified config or the legacy file at class load time.
+    # Defined BEFORE MODEL_IDS so the constant can call it.
+    def self.load_model_ids
+      require_relative 'concerns/mcptask_runner_config'
+      unified = Concerns::McptaskRunnerConfig.load
+      if (models = unified['models']).is_a?(Hash) && !models.empty?
+        models
+      elsif File.exist?(LEGACY_MODELS_FILE)
+        YAML.load_file(LEGACY_MODELS_FILE)
+      else
+        GENERIC_MODEL_IDS
+      end
+    end
+
+    MODEL_IDS = load_model_ids
+
+    MODEL_IDS_FROM_FILE = (MODEL_IDS != GENERIC_MODEL_IDS).freeze
 
     # Tier-alias overrides for forked skills / subagents. The --model flag pins only the MAIN
     # process; a fork that declares `model: haiku` (or sonnet/opus) in its frontmatter resolves
     # that alias through these env vars, falling back to the built-in Anthropic IDs
-    # (e.g. claude-haiku-4-5-...) when they are unset. On a host whose config/models.yml pins a
+    # (e.g. claude-haiku-4-5-...) when they are unset. On a host whose model config pins a
     # non-Anthropic backend (ollama/minimax), those built-in IDs do not exist and the fork dies
-    # with "model ... may not exist" — so we export the pinned IDs here too. Only when models.yml
-    # is present: the generic fallback values are aliases ('haiku'), not the full model names these
-    # vars require, and unset is already correct on Anthropic hosts.
+    # with "model ... may not exist" — so we export the pinned IDs here too. Only when models
+    # are pinned: the generic fallback values are aliases ('haiku'), not the full model names
+    # these vars require, and unset is already correct on Anthropic hosts.
     FORK_MODEL_ENV = (MODEL_IDS_FROM_FILE ? {
       'ANTHROPIC_DEFAULT_OPUS_MODEL' => MODEL_IDS['genius'],
       'ANTHROPIC_DEFAULT_SONNET_MODEL' => MODEL_IDS['smart'],
       'ANTHROPIC_DEFAULT_HAIKU_MODEL' => MODEL_IDS['primitive']
     }.compact : {}).freeze
 
-    # Optional per-host-project launcher override. When config/launcher.yml exists in the
-    # project where the runner runs, its `command:` array REPLACES the default `[claude_path]`
-    # prefix — e.g. [ollama, launch, claude] to route through an alternate backend for testing.
-    # The runner still appends its own flags (-p, --model, --output-format=stream-json, …) and
-    # still derives --model from config/models.yml, so the stream-json contract stays intact.
-    LAUNCHER_FILE = File.join(Dir.pwd, 'config', 'launcher.yml').freeze
-    CLAUDE_COMMAND_PREFIX = (File.exist?(LAUNCHER_FILE) ? YAML.load_file(LAUNCHER_FILE) : {})['command'].freeze
+    # Optional per-host-project launcher override. When the unified
+    # config/mcptask_runner.yml (or the legacy config/launcher.yml) carries a
+    # `launcher:` key (or top-level `command:`), its array REPLACES the default
+    # `[claude_path]` prefix — e.g. [ollama, launch, claude] to route through an
+    # alternate backend for testing. The runner still appends its own flags
+    # (-p, --model, --output-format=stream-json, …) and still derives --model from
+    # the model config, so the stream-json contract stays intact.
+    LEGACY_LAUNCHER_FILE = File.join(Dir.pwd, 'config', 'launcher.yml').freeze
+
+    # Reads the launch prefix from the unified config or the legacy file at class
+    # load time. Defined BEFORE CLAUDE_COMMAND_PREFIX so the constant can call it.
+    def self.load_launcher_prefix
+      require_relative 'concerns/mcptask_runner_config'
+      unified = Concerns::McptaskRunnerConfig.load
+      launcher = unified['launcher']
+      if launcher.is_a?(Hash) && launcher['command'].is_a?(Array)
+        launcher['command'].freeze
+      elsif File.exist?(LEGACY_LAUNCHER_FILE)
+        (YAML.load_file(LEGACY_LAUNCHER_FILE) || {})['command']&.freeze
+      end
+    end
+
+    CLAUDE_COMMAND_PREFIX = load_launcher_prefix
 
     # One-line description of where model IDs came from, for the boot banner.
     def self.model_source_description
       pairs = MODEL_IDS.map { |level, id| "#{level}=#{id}" }.join(', ')
-      source = MODEL_IDS_FROM_FILE ? "config/models.yml (pinned): #{pairs}" : "generic aliases (no config/models.yml): #{pairs}"
+      source = MODEL_IDS_FROM_FILE ? "pinned (config/mcptask_runner.yml or legacy config/models.yml): #{pairs}" : "generic aliases (no model config): #{pairs}"
       fork_note = FORK_MODEL_ENV.empty? ? '' : " | fork aliases -> #{FORK_MODEL_ENV.values.uniq.join(', ')}"
       "Models: #{source}#{fork_note}"
     end
@@ -115,7 +151,7 @@ module McptaskRunner
     def self.launcher_source_description
       return 'Launcher: default (claude binary autodetect / CLAUDE_PATH)' unless CLAUDE_COMMAND_PREFIX
 
-      "Launcher: config/launcher.yml override -> #{CLAUDE_COMMAND_PREFIX.join(' ')}"
+      "Launcher: override (config/mcptask_runner.yml or legacy config/launcher.yml) -> #{CLAUDE_COMMAND_PREFIX.join(' ')}"
     end
 
     # One-line description of where auto-bug pieces will be created, for the boot banner.

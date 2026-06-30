@@ -84,6 +84,40 @@ class BugDestinationConfigTest < Minitest::Test
   end
 
   def test_describe_shows_project_root_when_missing
-    assert_equal 'Bug destination: project root (no config/bug_destination.yml)', Klass.describe
+    assert_equal 'Bug destination: project root (no bug destination configured)', Klass.describe
+  end
+
+  # --- unified config/mcptask_runner.yml path ---
+
+  def write_unified_config(yaml)
+    dir = File.join(@tmpdir, 'config')
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, 'mcptask_runner.yml'), yaml)
+  end
+
+  def test_unified_config_overrides_defaults
+    write_unified_config("bug_destination:\n  epic_relative_id: 12345\n  epic_name: Auto-bugs\n")
+    cfg = Klass.load
+    assert_equal 12_345, cfg[:epic_relative_id]
+    assert_equal 'Auto-bugs', cfg[:epic_name]
+  end
+
+  def test_unified_config_wins_over_legacy_file
+    write_unified_config("bug_destination:\n  epic_relative_id: 12345\n")
+    write_config("epic_relative_id: 99999\n")
+    cfg = Klass.load
+    assert_equal 12_345, cfg[:epic_relative_id], 'unified config must take precedence over legacy file'
+  end
+
+  def test_legacy_file_used_when_unified_config_lacks_bug_destination
+    write_config("epic_relative_id: 88888\nepic_name: Legacy\n")
+    cfg = Klass.load
+    assert_equal 88_888, cfg[:epic_relative_id]
+    assert_equal 'Legacy', cfg[:epic_name]
+  end
+
+  def test_describe_includes_unified_epic
+    write_unified_config("bug_destination:\n  epic_relative_id: 555\n  epic_name: Unified-bugs\n")
+    assert_equal 'Bug destination: Epic #555 (Unified-bugs)', Klass.describe
   end
 end
