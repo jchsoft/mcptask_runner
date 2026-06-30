@@ -5,7 +5,7 @@ class WaitingStrategyTest < Minitest::Test
     strategy = McptaskRunner::WaitingStrategy.new
     sleep_until_called = false
     strategy.stub :sleep_until, ->(_target_time, builder: nil) { sleep_until_called = true } do
-      assert_output(/Waiting 1 hour before retry/) { strategy.wait_one_hour }
+      assert_output(/Waiting/) { strategy.wait_one_hour }
     end
     assert sleep_until_called
   end
@@ -75,5 +75,53 @@ class WaitingStrategyTest < Minitest::Test
     end
 
     assert_empty emitted
+  end
+
+  # The two wait methods read their duration from WaitingStrategyConfig (per-host
+  # overrides in config/waiting_strategy.yml). These tests stub the class-level
+  # config so we don't depend on whether the host has a config file present —
+  # the test only cares that the duration propagates into the sleep_until call.
+  def test_wait_one_hour_uses_long_wait_config
+    McptaskRunner::WaitingStrategy.stub :config, { short_wait_minutes: 30, long_wait_minutes: 45 } do
+      strategy = McptaskRunner::WaitingStrategy.new
+      captured = nil
+      mock_now = Time.new(2026, 1, 1, 12, 0, 0)
+      strategy.stub :sleep_until, ->(target, builder: nil) { captured = target } do
+        Time.stub :now, mock_now do
+          strategy.wait_one_hour
+        end
+      end
+      assert_equal 45, ((captured - mock_now) / 60).round
+    end
+  end
+
+  def test_wait_half_hour_uses_short_wait_config
+    McptaskRunner::WaitingStrategy.stub :config, { short_wait_minutes: 5, long_wait_minutes: 30 } do
+      strategy = McptaskRunner::WaitingStrategy.new
+      captured = nil
+      mock_now = Time.new(2026, 1, 1, 12, 0, 0)
+      strategy.stub :sleep_until, ->(target, builder: nil) { captured = target } do
+        Time.stub :now, mock_now do
+          strategy.wait_half_hour
+        end
+      end
+      assert_equal 5, ((captured - mock_now) / 60).round
+    end
+  end
+
+  def test_wait_half_hour_short_log_message_uses_configured_duration
+    McptaskRunner::WaitingStrategy.stub :config, { short_wait_minutes: 7, long_wait_minutes: 30 } do
+      strategy = McptaskRunner::WaitingStrategy.new
+      output = capture_io { strategy.stub(:sleep_until, ->(_t, builder: nil) { }) { strategy.wait_half_hour } }
+      assert_match(/Waiting 7 minutes/, output[0])
+    end
+  end
+
+  def test_wait_one_hour_long_log_message_uses_configured_duration
+    McptaskRunner::WaitingStrategy.stub :config, { short_wait_minutes: 5, long_wait_minutes: 22 } do
+      strategy = McptaskRunner::WaitingStrategy.new
+      output = capture_io { strategy.stub(:sleep_until, ->(_t, builder: nil) { }) { strategy.wait_one_hour } }
+      assert_match(/Waiting 22 minutes/, output[0])
+    end
   end
 end

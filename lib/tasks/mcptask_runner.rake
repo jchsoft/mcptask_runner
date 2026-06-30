@@ -202,6 +202,7 @@ namespace :mcptask_runner do
     puts "[McptaskRunner] #{McptaskRunner::ClaudeCodeBase.model_source_description}"
     puts "[McptaskRunner] #{McptaskRunner::ClaudeCodeBase.launcher_source_description}"
     puts "[McptaskRunner] #{McptaskRunner::ClaudeCodeBase.bug_destination_source_description}"
+    puts "[McptaskRunner] #{McptaskRunner::ClaudeCodeBase.waiting_strategy_source_description}"
     puts '=' * 80
   end
 

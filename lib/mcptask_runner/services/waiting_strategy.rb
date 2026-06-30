@@ -1,7 +1,11 @@
 # frozen_string_literal: true
 
 module McptaskRunner
-  # WaitingStrategy handles sleep periods between task batches based on different conditions
+  # WaitingStrategy handles sleep periods between task batches based on different conditions.
+  #
+  # Durations are read from config/waiting_strategy.yml via WaitingStrategyConfig
+  # (per-host overrides). Falls back to 30 min (short) / 60 min (long) when the
+  # file is missing or invalid, matching the original hard-coded values.
   class WaitingStrategy
     def wait_until_next_day(builder: nil)
       Logger.debug("[WaitingStrategy] [wait_until_next_day] Calculating next business day at 8 AM...")
@@ -12,23 +16,39 @@ module McptaskRunner
     end
 
     def wait_one_hour(builder: nil)
-      target_time = Time.now + 1.hour
+      minutes = self.class.config[:long_wait_minutes]
+      target_time = Time.now + minutes.minutes
       enter_wait_state(builder, target_time)
-      Logger.info_stdout("[WaitingStrategy] Waiting 1 hour before retry... (since #{Time.now.strftime('%H:%M')}, until #{target_time.strftime('%H:%M')})")
+      Logger.info_stdout("[WaitingStrategy] Waiting #{minutes} minutes before retry... (since #{Time.now.strftime('%H:%M')}, until #{target_time.strftime('%H:%M')})")
       Logger.debug("[WaitingStrategy] [wait_one_hour] Start time: #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}")
       Logger.debug("[WaitingStrategy] [wait_one_hour] Resume time: #{target_time.strftime('%Y-%m-%d %H:%M:%S')}")
       sleep_until(target_time, builder: builder)
-      Logger.debug("[WaitingStrategy] [wait_one_hour] 1 hour wait complete, ready to retry")
+      Logger.debug("[WaitingStrategy] [wait_one_hour] #{minutes} minute wait complete, ready to retry")
     end
 
     def wait_half_hour(builder: nil)
-      target_time = Time.now + 30.minutes
+      minutes = self.class.config[:short_wait_minutes]
+      target_time = Time.now + minutes.minutes
       enter_wait_state(builder, target_time)
-      Logger.info_stdout("[WaitingStrategy] Waiting 30 minutes before retry... (since #{Time.now.strftime('%H:%M')}, until #{target_time.strftime('%H:%M')})")
+      Logger.info_stdout("[WaitingStrategy] Waiting #{minutes} minutes before retry... (since #{Time.now.strftime('%H:%M')}, until #{target_time.strftime('%H:%M')})")
       Logger.debug("[WaitingStrategy] [wait_half_hour] Start time: #{Time.now.strftime('%Y-%m-%d %H:%M:%S')}")
       Logger.debug("[WaitingStrategy] [wait_half_hour] Resume time: #{target_time.strftime('%Y-%m-%d %H:%M:%S')}")
       sleep_until(target_time, builder: builder)
-      Logger.debug("[WaitingStrategy] [wait_half_hour] 30 minute wait complete, ready to retry")
+      Logger.debug("[WaitingStrategy] [wait_half_hour] #{minutes} minute wait complete, ready to retry")
+    end
+
+    # Reads config/waiting_strategy.yml once per process via WaitingStrategyConfig.
+    # Memoized on the class so a hot path (every "no task" loop iteration) does
+    # not re-parse YAML. Same pattern as ClaudeCodeBase::MODEL_IDS.
+    def self.config
+      @config ||= load_config
+    end
+
+    def self.load_config
+      require_relative 'concerns/waiting_strategy_config'
+      Concerns::WaitingStrategyConfig.load
+    rescue StandardError
+      { short_wait_minutes: 30, long_wait_minutes: 60 }
     end
 
     private
