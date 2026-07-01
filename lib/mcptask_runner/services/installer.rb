@@ -10,8 +10,9 @@ module McptaskRunner
   # Part 1: copies bundled Claude Code skills into .claude/skills/.
   # Part 2: generates a macOS LaunchAgent plist for weekday scheduling.
   # Part 3: asks which mcptask.online Epic should hold auto-detected bugs, and
-  #         writes config/bug_destination.yml so the runner + BugReporter CLI
-  #         route new bug pieces into that Epic instead of the project root.
+  #         writes config/mcptask_runner.yml (bug_destination: section) so the
+  #         runner + BugReporter CLI route new bug pieces into that Epic
+  #         instead of the project root.
   #
   # Usage: rake mcptask_runner:install
   class Installer
@@ -28,7 +29,6 @@ module McptaskRunner
       'headers' => { 'Authorization' => 'Bearer ${MCPTASK_TOKEN}' }
     }.freeze
 
-    BUG_DESTINATION_EXAMPLE = File.expand_path('../../../../config/bug_destination.yml.example', __dir__).freeze
     MCPTASK_RUNNER_CONFIG_EXAMPLE = File.expand_path('../../../../config/mcptask_runner.yml.example', __dir__).freeze
 
     # dirs: optional override paths { launch_agents:, log_base: } — grouped so callers
@@ -126,10 +126,7 @@ module McptaskRunner
 
     # Writes the bug destination into config/mcptask_runner.yml (unified config)
     # so the runner + BugReporter CLI route bug pieces into a dedicated Epic
-    # instead of the project root. If a legacy config/bug_destination.yml
-    # already exists, the user is migrating — leave it untouched (the loader
-    # still reads the legacy file with higher precedence than the unified one
-    # for backward compat) and emit a hint pointing at the new location.
+    # instead of the project root.
     #
     # Skipped when the unified file already has a `bug_destination:` key and
     # FORCE is not set — the user can edit the file directly to retarget
@@ -138,14 +135,9 @@ module McptaskRunner
     def configure_bug_destination
       puts '[Installer] Configuring bug destination (Epic for auto-detected bugs)...'
 
-      legacy_path = bug_destination_path
       unified_path = mcptask_runner_config_path
 
-      if File.exist?(legacy_path)
-        puts "[Installer] Legacy #{legacy_path} present — leaving untouched (delete after migration to unified config)"
-      end
-
-      if !File.exist?(legacy_path) && File.exist?(unified_path) && !@force && @bug_epic_relative_id.nil?
+      if File.exist?(unified_path) && !@force && @bug_epic_relative_id.nil?
         existing = YAML.safe_load_file(unified_path) || {}
         if existing.is_a?(Hash) && existing['bug_destination'].is_a?(Hash) && !existing['bug_destination'].empty?
           puts "[Installer] #{unified_path} already has a bug_destination — leaving untouched (use FORCE=1 to retarget)"
@@ -169,10 +161,6 @@ module McptaskRunner
         puts "[Installer] Bug destination written to #{unified_path} under bug_destination:"
         puts "[Installer] Auto-bugs will land in Epic ##{id}#{name ? " (#{name})" : ''}"
       end
-    end
-
-    def bug_destination_path
-      File.join(@target_dir, 'config', 'bug_destination.yml')
     end
 
     def mcptask_runner_config_path
@@ -204,21 +192,12 @@ module McptaskRunner
     # recommended short waits so unattended hosts don't sleep 30 minutes
     # between retries, but operators can delete the section to revert to
     # defaults.
-    #
-    # Legacy config/waiting_strategy.yml is left untouched — the loader still
-    # reads it with higher precedence than the unified file (same precedence
-    # as the bug-destination legacy file), so hosts can migrate incrementally.
     def configure_waiting_strategy
       puts '[Installer] Configuring waiting strategy (short/long wait durations)...'
 
-      legacy_path = waiting_strategy_path
       unified_path = mcptask_runner_config_path
 
-      if File.exist?(legacy_path)
-        puts "[Installer] Legacy #{legacy_path} present — leaving untouched (delete after migration to unified config)"
-      end
-
-      if !File.exist?(legacy_path) && File.exist?(unified_path)
+      if File.exist?(unified_path)
         existing = YAML.safe_load_file(unified_path) || {}
         if existing.is_a?(Hash) && existing['waiting_strategy'].is_a?(Hash) && !existing['waiting_strategy'].empty?
           puts "[Installer] #{unified_path} already has a waiting_strategy section — leaving untouched (delete the section to use defaults)"
@@ -232,10 +211,6 @@ module McptaskRunner
       })
       puts "[Installer] Waiting strategy written to #{unified_path} under waiting_strategy:"
       puts '[Installer] Edit it to tighten/loosen the no-task retry intervals (default: short=30m, long=60m)'
-    end
-
-    def waiting_strategy_path
-      File.join(@target_dir, 'config', 'waiting_strategy.yml')
     end
 
     # Merges `payload` under the named top-level key in the unified

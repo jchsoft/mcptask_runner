@@ -63,31 +63,35 @@ The same token is reused for the REST quota API and the snapshot stream — both
 
 ## Configuration
 
-### `config/models.yml` — spice levels
+### `config/mcptask_runner.yml` — configuration
 
-The runner maps three "spice levels" to concrete model IDs. Copy `config/models.yml.example` to `config/models.yml` and pin versioned IDs:
+Copy `config/mcptask_runner.yml.example` to `config/mcptask_runner.yml` to override defaults. The file is gitignored — each host keeps its own copy. Every top-level key is optional.
+
+#### `models:` — spice levels
+
+The runner maps three "spice levels" to concrete model IDs:
 
 ```yaml
-genius:    claude-opus-4-8
-smart:     claude-sonnet-4-6
-primitive: claude-haiku-4-5-20251001
+models:
+  genius:    claude-opus-4-8
+  smart:     claude-sonnet-4-6
+  primitive: claude-haiku-4-5-20251001
 ```
 
 - **genius** — heavy coding executors (Honest, the auto-squash family, manual task/story).
 - **smart** — Triage and Review/Reviews.
 - **primitive** — read-only Dry display.
 
-Pinning versioned IDs prevents context-overflow retry chains. The runner also exports these as `ANTHROPIC_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL` so forked subagents and skills inherit the same overrides. `models.yml` is **optional**: without it the runner falls back to generic `opus`/`sonnet`/`haiku` aliases that the Claude CLI resolves at runtime. On non-Anthropic backends you **must** pin all three IDs or forked subagents fail with "model may not exist". The file is gitignored — each host keeps its own copy.
+Pinning versioned IDs prevents context-overflow retry chains. The runner also exports these as `ANTHROPIC_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL` so forked subagents and skills inherit the same overrides. The `models:` section is **optional**: without it the runner falls back to generic `opus`/`sonnet`/`haiku` aliases that the Claude CLI resolves at runtime. On non-Anthropic backends you **must** pin all three IDs or forked subagents fail with "model may not exist".
 
-### `config/launcher.yml` — alternate backend
-
-Copy `config/launcher.yml.example` to `config/launcher.yml` to override the default `claude` CLI launcher:
+#### `launcher:` — alternate backend
 
 ```yaml
-command: [ollama, launch, claude]
+launcher:
+  command: [ollama, launch, claude]
 ```
 
-The `command` value (array or string) replaces the launcher prefix; the runner still appends its own flags (`-p`, `--model`, `--output-format=stream-json`, `--verbose`, etc.). The model still comes from `config/models.yml`. Also optional — without it the runner autodetects the `claude` binary (or uses `$CLAUDE_PATH`).
+The `command` value (array or string) replaces the launcher prefix; the runner still appends its own flags (`-p`, `--model`, `--output-format=stream-json`, `--verbose`, etc.). The model still comes from the `models:` section above. Also optional — without it the runner autodetects the `claude` binary (or uses `$CLAUDE_PATH`).
 
 ### Environment variables
 

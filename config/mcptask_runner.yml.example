@@ -7,14 +7,8 @@
 # Each top-level key is OPTIONAL — omit any section to keep the corresponding
 # default. Order of lookup (highest priority first):
 #   1. config/mcptask_runner.yml (this file)
-#   2. legacy siblings (config/models.yml, config/launcher.yml,
-#      config/bug_destination.yml, config/waiting_strategy.yml)
-#   3. Built-in defaults (generic model aliases / project-root bug placement /
+#   2. Built-in defaults (generic model aliases / project-root bug placement /
 #      30 min short wait / 60 min long wait)
-#
-# Hosts can migrate at their own pace: keep the legacy files alongside this
-# one, the legacy values win, then delete the legacy files when the unified
-# file is fully populated.
 #
 # --- Models: per-spice-level Claude model IDs ---
 #

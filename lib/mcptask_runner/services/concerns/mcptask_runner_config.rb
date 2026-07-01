@@ -6,9 +6,8 @@ module McptaskRunner
   module Concerns
     # Per-host unified config for the mcptask_runner gem.
     #
-    # One file, one place — operators no longer juggle 4 sibling files
-    # (config/models.yml, config/launcher.yml, config/bug_destination.yml,
-    # config/waiting_strategy.yml). Layout:
+    # One file, one place — a single source of truth for models, launcher,
+    # bug destination, and waiting strategy. Layout:
     #
     #   models:
     #     genius: claude-opus-4-8
@@ -25,13 +24,7 @@ module McptaskRunner
     #
     # Resolved relative to Dir.pwd so the same code path works both inside the
     # gem's own test suite (Dir.pwd = the repo) and inside a host Rails project
-    # (Dir.pwd = the project root). Mirrors the old per-file loaders' convention.
-    #
-    # Backward compat: when the legacy per-file is present (config/models.yml,
-    # etc.) AND the unified file is absent, the legacy file is used. This lets
-    # hosts migrate at their own pace without a one-shot migration step. The
-    # Installer writes the unified file in the recommended location; delete the
-    # legacy files to switch sources.
+    # (Dir.pwd = the project root).
     module McptaskRunnerConfig
       FILE_NAME = 'config/mcptask_runner.yml'.freeze
 

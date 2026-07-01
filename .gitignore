@@ -16,12 +16,5 @@
 # Skills synced from config/skills/ by bin/sync-skills (source of truth is config/skills/)
 /.claude/skills/
 /.mcp.json
-# Per-host Claude launcher/model overrides (not for the repo)
-/config/launcher.yml
-/config/models.yml
-# Per-host bug destination (which Epic should auto-bugs land in)
-/config/bug_destination.yml
-# Per-host WaitingStrategy duration overrides (short_wait_minutes / long_wait_minutes)
-/config/waiting_strategy.yml
-# Per-host unified mcptask_runner config (supersedes the four legacy files above)
+# Per-host mcptask_runner config (models, launcher, bug destination, waiting strategy)
 /config/mcptask_runner.yml

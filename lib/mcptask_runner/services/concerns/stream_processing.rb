@@ -250,7 +250,7 @@ module McptaskRunner
 
       # MCP server disconnected at Claude startup → tool reports "exists but is not enabled
       # in this context". Marker retries would just re-emit the same failure and balloon
-      # context past the 200K pin (see config/models.yml). Treat as terminal.
+      # context past the 200K pin (see config/mcptask_runner.yml). Treat as terminal.
       # Sets snapshot status to :error inside the detector (mirrors check_stall) so
       # finalize_streaming skips re-setting :finished, and the failure shows up in the
       # mcptask.online web UI — not only in ~/logs/mcptask_runner/mcptask_runner.log.

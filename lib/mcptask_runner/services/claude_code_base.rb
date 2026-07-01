@@ -6,7 +6,6 @@ require 'json'
 require 'securerandom'
 require 'shellwords'
 require 'timeout'
-require 'yaml'
 require_relative 'output_formatter'
 require_relative 'stall_detector'
 require_relative 'concerns/process_management'
@@ -67,31 +66,23 @@ module McptaskRunner
     # Spice-level => Claude model ID mapping.
     #
     # The host project (where the runner runs) may provide config/mcptask_runner.yml
-    # (or the legacy config/models.yml) to PIN specific versioned IDs (e.g. standard
-    # 200K-context variants, no [1m] suffix) so context overflows fail fast at ~200K
-    # instead of growing to 1M across --continue retry chains. When neither is present
-    # we fall back to generic, unversioned CLI aliases — Claude resolves them to its
-    # current default models.
+    # to PIN specific versioned IDs (e.g. standard 200K-context variants, no [1m]
+    # suffix) so context overflows fail fast at ~200K instead of growing to 1M
+    # across --continue retry chains. When absent we fall back to generic,
+    # unversioned CLI aliases — Claude resolves them to its current default models.
     GENERIC_MODEL_IDS = {
       'genius' => 'opus',
       'smart' => 'sonnet',
       'primitive' => 'haiku'
     }.freeze
 
-    # Source of truth: config/mcptask_runner.yml (unified config), then the legacy
-    # config/models.yml for hosts that haven't migrated yet. Either file alone is
-    # sufficient — we don't require both, and we don't merge across them.
-    LEGACY_MODELS_FILE = File.join(Dir.pwd, 'config', 'models.yml').freeze
-
-    # Reads models from the unified config or the legacy file at class load time.
+    # Reads models from config/mcptask_runner.yml at class load time.
     # Defined BEFORE MODEL_IDS so the constant can call it.
     def self.load_model_ids
       require_relative 'concerns/mcptask_runner_config'
       unified = Concerns::McptaskRunnerConfig.load
       if (models = unified['models']).is_a?(Hash) && !models.empty?
         models
-      elsif File.exist?(LEGACY_MODELS_FILE)
-        YAML.load_file(LEGACY_MODELS_FILE)
       else
         GENERIC_MODEL_IDS
       end
@@ -115,26 +106,20 @@ module McptaskRunner
       'ANTHROPIC_DEFAULT_HAIKU_MODEL' => MODEL_IDS['primitive']
     }.compact : {}).freeze
 
-    # Optional per-host-project launcher override. When the unified
-    # config/mcptask_runner.yml (or the legacy config/launcher.yml) carries a
-    # `launcher:` key (or top-level `command:`), its array REPLACES the default
+    # Optional per-host-project launcher override. When config/mcptask_runner.yml
+    # carries a `launcher:` key with a `command:` array, it REPLACES the default
     # `[claude_path]` prefix — e.g. [ollama, launch, claude] to route through an
     # alternate backend for testing. The runner still appends its own flags
     # (-p, --model, --output-format=stream-json, …) and still derives --model from
     # the model config, so the stream-json contract stays intact.
-    LEGACY_LAUNCHER_FILE = File.join(Dir.pwd, 'config', 'launcher.yml').freeze
 
-    # Reads the launch prefix from the unified config or the legacy file at class
-    # load time. Defined BEFORE CLAUDE_COMMAND_PREFIX so the constant can call it.
+    # Reads the launch prefix from config/mcptask_runner.yml at class load time.
+    # Defined BEFORE CLAUDE_COMMAND_PREFIX so the constant can call it.
     def self.load_launcher_prefix
       require_relative 'concerns/mcptask_runner_config'
       unified = Concerns::McptaskRunnerConfig.load
       launcher = unified['launcher']
-      if launcher.is_a?(Hash) && launcher['command'].is_a?(Array)
-        launcher['command'].freeze
-      elsif File.exist?(LEGACY_LAUNCHER_FILE)
-        (YAML.load_file(LEGACY_LAUNCHER_FILE) || {})['command']&.freeze
-      end
+      launcher['command'].freeze if launcher.is_a?(Hash) && launcher['command'].is_a?(Array)
     end
 
     CLAUDE_COMMAND_PREFIX = load_launcher_prefix
@@ -142,7 +127,7 @@ module McptaskRunner
     # One-line description of where model IDs came from, for the boot banner.
     def self.model_source_description
       pairs = MODEL_IDS.map { |level, id| "#{level}=#{id}" }.join(', ')
-      source = MODEL_IDS_FROM_FILE ? "pinned (config/mcptask_runner.yml or legacy config/models.yml): #{pairs}" : "generic aliases (no model config): #{pairs}"
+      source = MODEL_IDS_FROM_FILE ? "pinned (config/mcptask_runner.yml): #{pairs}" : "generic aliases (no model config): #{pairs}"
       fork_note = FORK_MODEL_ENV.empty? ? '' : " | fork aliases -> #{FORK_MODEL_ENV.values.uniq.join(', ')}"
       "Models: #{source}#{fork_note}"
     end
@@ -151,7 +136,7 @@ module McptaskRunner
     def self.launcher_source_description
       return 'Launcher: default (claude binary autodetect / CLAUDE_PATH)' unless CLAUDE_COMMAND_PREFIX
 
-      "Launcher: override (config/mcptask_runner.yml or legacy config/launcher.yml) -> #{CLAUDE_COMMAND_PREFIX.join(' ')}"
+      "Launcher: override (config/mcptask_runner.yml) -> #{CLAUDE_COMMAND_PREFIX.join(' ')}"
     end
 
     # One-line description of where auto-bug pieces will be created, for the boot banner.
@@ -163,7 +148,7 @@ module McptaskRunner
     end
 
     # One-line description of the active WaitingStrategy durations. Surfaces the
-    # per-host override (config/waiting_strategy.yml) in the boot banner so
+    # per-host override (config/mcptask_runner.yml) in the boot banner so
     # operators can spot a wrong short_wait at a glance.
     def self.waiting_strategy_source_description
       require_relative 'concerns/waiting_strategy_config'
@@ -326,8 +311,8 @@ module McptaskRunner
       claude_path
     end
 
-    # Base launch command: per-project config/launcher.yml override, else the autodetected
-    # claude binary. Returns a fresh array each call so build_command can mutate it safely.
+    # Base launch command: per-project config/mcptask_runner.yml launcher override, else the
+    # autodetected claude binary. Returns a fresh array each call so build_command can mutate it safely.
     def base_command
       CLAUDE_COMMAND_PREFIX&.dup || [resolve_claude_path]
     end

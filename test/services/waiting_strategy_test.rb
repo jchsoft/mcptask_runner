@@ -78,7 +78,7 @@ class WaitingStrategyTest < Minitest::Test
   end
 
   # The two wait methods read their duration from WaitingStrategyConfig (per-host
-  # overrides in config/waiting_strategy.yml). These tests stub the class-level
+  # overrides in config/mcptask_runner.yml). These tests stub the class-level
   # config so we don't depend on whether the host has a config file present —
   # the test only cares that the duration propagates into the sleep_until call.
   def test_wait_one_hour_uses_long_wait_config

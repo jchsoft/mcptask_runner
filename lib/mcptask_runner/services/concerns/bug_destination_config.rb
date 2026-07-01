@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require 'yaml'
-
 module McptaskRunner
   module Concerns
     # Per-host config for where bug pieces should land on mcptask.online.
@@ -13,27 +11,19 @@ module McptaskRunner
     # capacity limit, so the runner can pile failures there indefinitely without
     # starving the regular task queue.
     #
-    # Reads from the unified `config/mcptask_runner.yml` (under the
-    # `bug_destination:` key) or the legacy `config/bug_destination.yml`.
-    # When neither is present, callers fall back to project-root placement.
+    # Reads from the unified `config/mcptask_runner.yml`, under the
+    # `bug_destination:` key. When absent, callers fall back to project-root
+    # placement.
     #
     # Unified format (config/mcptask_runner.yml):
     #   bug_destination:
     #     epic_relative_id: 12345   # Epic piece relative_id in the same account
     #     epic_name: "Auto-bugs"    # optional human label, surfaced in logs
     #
-    # Legacy format (config/bug_destination.yml, gitignored per-host):
-    #   epic_relative_id: 12345
-    #   epic_name: "Auto-bugs"
-    #
     # Resolved relative to Dir.pwd so the same code path works both inside the
     # gem's own test suite (Dir.pwd = the repo) and inside a host Rails project
     # (Dir.pwd = the project root).
     module BugDestinationConfig
-      # Legacy filename — kept for backward compat with hosts that haven't
-      # migrated to the unified config/mcptask_runner.yml yet.
-      FILE_NAME = 'config/bug_destination.yml'.freeze
-
       module_function
 
       # Returns a Hash with :epic_relative_id (Integer or nil) and :epic_name (String or nil).
@@ -48,10 +38,6 @@ module McptaskRunner
         { epic_relative_id: epic_relative_id, epic_name: epic_name }
       rescue StandardError
         missing
-      end
-
-      def file_path
-        File.join(Dir.pwd, FILE_NAME)
       end
 
       def missing
@@ -70,19 +56,13 @@ module McptaskRunner
         end
       end
 
-      # Reads the unified config first, then the legacy file. Returns {} when
-      # neither has data — keeps `load` above free of duplicate fallback logic.
+      # Reads the bug_destination section of the unified config. Returns {} when
+      # absent or empty — keeps `load` above free of duplicate fallback logic.
       def load_raw
         require_relative 'mcptask_runner_config'
         unified = McptaskRunnerConfig.load
         bd = unified['bug_destination']
-        if bd.is_a?(Hash) && !bd.empty?
-          bd
-        elsif File.exist?(file_path)
-          YAML.safe_load_file(file_path) || {}
-        else
-          {}
-        end
+        bd.is_a?(Hash) && !bd.empty? ? bd : {}
       end
     end
   end

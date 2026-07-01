@@ -7,8 +7,9 @@ require 'yaml'
 
 # Tests for the per-host bug-destination config loader.
 #
-# The loader resolves FILE_PATH from Dir.pwd at first read, so we simply
-# chdir into a tmpdir that contains the config file — no stubbing required.
+# The loader resolves the unified config/mcptask_runner.yml relative to
+# Dir.pwd at first read, so we simply chdir into a tmpdir that contains the
+# config file — no stubbing required.
 class BugDestinationConfigTest < Minitest::Test
   Klass = McptaskRunner::Concerns::BugDestinationConfig
 
@@ -23,10 +24,11 @@ class BugDestinationConfigTest < Minitest::Test
     FileUtils.remove_entry(@tmpdir) if File.exist?(@tmpdir)
   end
 
-  def write_config(yaml)
+  def write_config(bug_destination_yaml)
     dir = File.join(@tmpdir, 'config')
     FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, 'bug_destination.yml'), yaml)
+    indented = bug_destination_yaml.each_line.map { |line| "  #{line}" }.join
+    File.write(File.join(dir, 'mcptask_runner.yml'), "bug_destination:\n#{indented}")
   end
 
   def test_missing_file_returns_nil_values
@@ -67,7 +69,9 @@ class BugDestinationConfigTest < Minitest::Test
   end
 
   def test_malformed_yaml_does_not_raise
-    write_config(": : not yaml\n")
+    dir = File.join(@tmpdir, 'config')
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, 'mcptask_runner.yml'), ": : not yaml\n")
     cfg = Klass.load
     assert_nil cfg[:epic_relative_id]
     assert_nil cfg[:epic_name]
@@ -85,39 +89,5 @@ class BugDestinationConfigTest < Minitest::Test
 
   def test_describe_shows_project_root_when_missing
     assert_equal 'Bug destination: project root (no bug destination configured)', Klass.describe
-  end
-
-  # --- unified config/mcptask_runner.yml path ---
-
-  def write_unified_config(yaml)
-    dir = File.join(@tmpdir, 'config')
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, 'mcptask_runner.yml'), yaml)
-  end
-
-  def test_unified_config_overrides_defaults
-    write_unified_config("bug_destination:\n  epic_relative_id: 12345\n  epic_name: Auto-bugs\n")
-    cfg = Klass.load
-    assert_equal 12_345, cfg[:epic_relative_id]
-    assert_equal 'Auto-bugs', cfg[:epic_name]
-  end
-
-  def test_unified_config_wins_over_legacy_file
-    write_unified_config("bug_destination:\n  epic_relative_id: 12345\n")
-    write_config("epic_relative_id: 99999\n")
-    cfg = Klass.load
-    assert_equal 12_345, cfg[:epic_relative_id], 'unified config must take precedence over legacy file'
-  end
-
-  def test_legacy_file_used_when_unified_config_lacks_bug_destination
-    write_config("epic_relative_id: 88888\nepic_name: Legacy\n")
-    cfg = Klass.load
-    assert_equal 88_888, cfg[:epic_relative_id]
-    assert_equal 'Legacy', cfg[:epic_name]
-  end
-
-  def test_describe_includes_unified_epic
-    write_unified_config("bug_destination:\n  epic_relative_id: 555\n  epic_name: Unified-bugs\n")
-    assert_equal 'Bug destination: Epic #555 (Unified-bugs)', Klass.describe
   end
 end

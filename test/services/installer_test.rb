@@ -271,17 +271,10 @@ class InstallerTest < Minitest::Test
   # --- bug destination config ---
   #
   # The Installer writes the bug destination into the unified
-  # config/mcptask_runner.yml under the `bug_destination:` key. A pre-existing
-  # legacy config/bug_destination.yml is still respected (the loader reads
-  # it with higher precedence than the unified file), so the tests below
-  # create it when they want to simulate an un-migrated host.
+  # config/mcptask_runner.yml under the `bug_destination:` key.
 
   def bug_destination_path
     File.join(@target_dir, 'config', 'mcptask_runner.yml')
-  end
-
-  def legacy_bug_destination_path
-    File.join(@target_dir, 'config', 'bug_destination.yml')
   end
 
   def bug_destination_section
@@ -367,21 +360,6 @@ class InstallerTest < Minitest::Test
     section = bug_destination_section
     assert_equal 12_345, section['epic_relative_id']
     assert_equal 'keep', section['epic_name']
-  end
-
-  def test_legacy_bug_destination_file_is_left_alone
-    FileUtils.mkdir_p(File.join(@target_dir, 'config'))
-    File.write(legacy_bug_destination_path, "epic_relative_id: 99999\nepic_name: legacy\n")
-
-    capture_io { build(bug_dest: { relative_id: 42_001 }).call }
-
-    # Legacy file is preserved so the existing loader can still see it.
-    legacy_payload = YAML.safe_load(File.read(legacy_bug_destination_path))
-    assert_equal 99_999, legacy_payload['epic_relative_id']
-
-    # Unified file is also written with the new value.
-    section = bug_destination_section
-    assert_equal 42_001, section['epic_relative_id']
   end
 
   def test_prompts_for_epic_relative_id_interactively

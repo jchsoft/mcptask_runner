@@ -3,9 +3,10 @@
 module McptaskRunner
   # WaitingStrategy handles sleep periods between task batches based on different conditions.
   #
-  # Durations are read from config/waiting_strategy.yml via WaitingStrategyConfig
-  # (per-host overrides). Falls back to 30 min (short) / 60 min (long) when the
-  # file is missing or invalid, matching the original hard-coded values.
+  # Durations are read from config/mcptask_runner.yml (waiting_strategy: section)
+  # via WaitingStrategyConfig (per-host overrides). Falls back to 30 min (short) /
+  # 60 min (long) when the file is missing or invalid, matching the original
+  # hard-coded values.
   class WaitingStrategy
     def wait_until_next_day(builder: nil)
       Logger.debug("[WaitingStrategy] [wait_until_next_day] Calculating next business day at 8 AM...")
@@ -37,7 +38,7 @@ module McptaskRunner
       Logger.debug("[WaitingStrategy] [wait_half_hour] #{minutes} minute wait complete, ready to retry")
     end
 
-    # Reads config/waiting_strategy.yml once per process via WaitingStrategyConfig.
+    # Reads config/mcptask_runner.yml once per process via WaitingStrategyConfig.
     # Memoized on the class so a hot path (every "no task" loop iteration) does
     # not re-parse YAML. Same pattern as ClaudeCodeBase::MODEL_IDS.
     def self.config

@@ -66,9 +66,9 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
   end
 
   def test_base_command_defaults_to_resolved_claude_path
-    # CLAUDE_COMMAND_PREFIX is a load-time constant from config/launcher.yml. The fallback to
-    # the resolved claude path is only observable on hosts WITHOUT a launcher override.
-    skip 'host has a config/launcher.yml override' if McptaskRunner::ClaudeCodeBase::CLAUDE_COMMAND_PREFIX
+    # CLAUDE_COMMAND_PREFIX is a load-time constant from config/mcptask_runner.yml. The fallback
+    # to the resolved claude path is only observable on hosts WITHOUT a launcher override.
+    skip 'host has a config/mcptask_runner.yml launcher override' if McptaskRunner::ClaudeCodeBase::CLAUDE_COMMAND_PREFIX
 
     base = McptaskRunner::ClaudeCodeBase.new
     base.stub(:resolve_claude_path, '/usr/bin/claude') do
@@ -102,11 +102,11 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
   end
 
   # Forked skills (model: haiku/sonnet/opus in frontmatter) resolve those aliases via the
-  # ANTHROPIC_DEFAULT_*_MODEL env vars, NOT the main process --model flag. When models.yml pins a
-  # backend, the pinned IDs must flow to forks too, or `model: haiku` forks request a built-in
+  # ANTHROPIC_DEFAULT_*_MODEL env vars, NOT the main process --model flag. When config/mcptask_runner.yml
+  # pins a backend, the pinned IDs must flow to forks too, or `model: haiku` forks request a built-in
   # Anthropic ID the backend rejects ("model ... may not exist").
   def test_fork_model_env_maps_tier_aliases_when_models_pinned
-    skip 'host has no config/models.yml (generic aliases)' unless McptaskRunner::ClaudeCodeBase::MODEL_IDS_FROM_FILE
+    skip 'host has no pinned model config (generic aliases)' unless McptaskRunner::ClaudeCodeBase::MODEL_IDS_FROM_FILE
 
     env = McptaskRunner::ClaudeCodeBase::FORK_MODEL_ENV
     ids = McptaskRunner::ClaudeCodeBase::MODEL_IDS
@@ -117,7 +117,7 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
   end
 
   def test_fork_model_env_empty_without_pinned_models
-    skip 'host has config/models.yml (pinned IDs)' if McptaskRunner::ClaudeCodeBase::MODEL_IDS_FROM_FILE
+    skip 'host has pinned model config (config/mcptask_runner.yml)' if McptaskRunner::ClaudeCodeBase::MODEL_IDS_FROM_FILE
 
     # Without pinned IDs the generic values are aliases ('haiku'), not full names — leaving the
     # env unset lets the CLI use its correct Anthropic defaults.

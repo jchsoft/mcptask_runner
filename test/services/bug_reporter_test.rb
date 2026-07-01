@@ -276,7 +276,8 @@ class BugReporterTest < Minitest::Test
   def write_bug_destination_config(yaml)
     dir = File.join(@tmpdir, 'config')
     FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, 'bug_destination.yml'), yaml)
+    indented = yaml.each_line.map { |line| "  #{line}" }.join
+    File.write(File.join(dir, 'mcptask_runner.yml'), "bug_destination:\n#{indented}")
   end
 
   private

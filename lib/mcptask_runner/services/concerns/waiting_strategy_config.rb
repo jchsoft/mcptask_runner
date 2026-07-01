@@ -1,34 +1,23 @@
 # frozen_string_literal: true
 
-require 'yaml'
-
 module McptaskRunner
   module Concerns
     # Per-host config for WaitingStrategy wait durations.
     #
-    # Reads from the unified `config/mcptask_runner.yml` (under the
-    # `waiting_strategy:` key) or the legacy `config/waiting_strategy.yml`.
-    # When neither is present, falls back to the original hard-coded defaults
-    # (30 min short wait / 60 min long wait).
+    # Reads from the unified `config/mcptask_runner.yml`, under the
+    # `waiting_strategy:` key. When absent, falls back to the original
+    # hard-coded defaults (30 min short wait / 60 min long wait).
     #
     # Unified format (config/mcptask_runner.yml):
     #   waiting_strategy:
     #     short_wait_minutes: 5
     #     long_wait_minutes: 30
     #
-    # Legacy format (config/waiting_strategy.yml, gitignored per-host):
-    #   short_wait_minutes: 5
-    #   long_wait_minutes: 30
-    #
     # Resolved relative to Dir.pwd so the same code path works both inside the
     # gem's own test suite (Dir.pwd = the repo) and inside a host Rails project
     # (Dir.pwd = the project root). Mirrors BugDestinationConfig / launcher
     # / models conventions.
     module WaitingStrategyConfig
-      # Legacy filename — kept for backward compat with hosts that haven't
-      # migrated to the unified config/mcptask_runner.yml yet.
-      FILE_NAME = 'config/waiting_strategy.yml'.freeze
-
       # Hard-coded fallback durations. short_wait is the "no tasks in
       # today_auto_squash" retry loop; long_wait is the "no tasks in daily"
       # retry loop. next_business_day_8am is computed, not configurable here.
@@ -48,10 +37,6 @@ module McptaskRunner
         }
       rescue StandardError
         defaults
-      end
-
-      def file_path
-        File.join(Dir.pwd, FILE_NAME)
       end
 
       def defaults
@@ -74,19 +59,13 @@ module McptaskRunner
         Integer(raw, exception: false).then { |n| n&.positive? ? n : default }
       end
 
-      # Reads the unified config first, then the legacy file. Returns {} when
-      # neither has data — keeps `load` above free of duplicate fallback logic.
+      # Reads the waiting_strategy section of the unified config. Returns {} when
+      # absent or empty — keeps `load` above free of duplicate fallback logic.
       def load_raw
         require_relative 'mcptask_runner_config'
         unified = McptaskRunnerConfig.load
         ws = unified['waiting_strategy']
-        if ws.is_a?(Hash) && !ws.empty?
-          ws
-        elsif File.exist?(file_path)
-          YAML.safe_load_file(file_path) || {}
-        else
-          {}
-        end
+        ws.is_a?(Hash) && !ws.empty? ? ws : {}
       end
     end
   end

@@ -7,8 +7,9 @@ require 'yaml'
 
 # Tests for the per-host WaitingStrategy duration config loader.
 #
-# The loader resolves FILE_NAME from Dir.pwd at every call, so we chdir into a
-# tmpdir that contains the config file (or omits it) — no stubbing required.
+# The loader resolves the unified config/mcptask_runner.yml relative to
+# Dir.pwd at every call, so we chdir into a tmpdir that contains the config
+# file (or omits it) — no stubbing required.
 class WaitingStrategyConfigTest < Minitest::Test
   Klass = McptaskRunner::Concerns::WaitingStrategyConfig
 
@@ -23,10 +24,11 @@ class WaitingStrategyConfigTest < Minitest::Test
     FileUtils.remove_entry(@tmpdir) if File.exist?(@tmpdir)
   end
 
-  def write_config(yaml)
+  def write_config(waiting_strategy_yaml)
     dir = File.join(@tmpdir, 'config')
     FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, 'waiting_strategy.yml'), yaml)
+    indented = waiting_strategy_yaml.each_line.map { |line| "  #{line}" }.join
+    File.write(File.join(dir, 'mcptask_runner.yml'), "waiting_strategy:\n#{indented}")
   end
 
   def test_missing_file_returns_defaults
@@ -91,7 +93,9 @@ class WaitingStrategyConfigTest < Minitest::Test
   end
 
   def test_malformed_yaml_does_not_raise
-    write_config(": : not yaml\n")
+    dir = File.join(@tmpdir, 'config')
+    FileUtils.mkdir_p(dir)
+    File.write(File.join(dir, 'mcptask_runner.yml'), ": : not yaml\n")
     cfg = Klass.load
     assert_equal 30, cfg[:short_wait_minutes]
     assert_equal 60, cfg[:long_wait_minutes]
@@ -115,34 +119,5 @@ class WaitingStrategyConfigTest < Minitest::Test
     desc = Klass.describe
     assert_match(/short_wait=30m/, desc)
     assert_match(/long_wait=60m/, desc)
-  end
-
-  # --- unified config/mcptask_runner.yml path ---
-
-  def write_unified_config(yaml)
-    dir = File.join(@tmpdir, 'config')
-    FileUtils.mkdir_p(dir)
-    File.write(File.join(dir, 'mcptask_runner.yml'), yaml)
-  end
-
-  def test_unified_config_overrides_defaults
-    write_unified_config("waiting_strategy:\n  short_wait_minutes: 5\n  long_wait_minutes: 15\n")
-    cfg = Klass.load
-    assert_equal 5, cfg[:short_wait_minutes]
-    assert_equal 15, cfg[:long_wait_minutes]
-  end
-
-  def test_unified_config_wins_over_legacy_file
-    write_unified_config("waiting_strategy:\n  short_wait_minutes: 5\n")
-    write_config("short_wait_minutes: 99\n")
-    cfg = Klass.load
-    assert_equal 5, cfg[:short_wait_minutes], 'unified config must take precedence over legacy file'
-  end
-
-  def test_legacy_file_used_when_unified_config_lacks_waiting_strategy
-    write_config("short_wait_minutes: 7\nlong_wait_minutes: 42\n")
-    cfg = Klass.load
-    assert_equal 7, cfg[:short_wait_minutes]
-    assert_equal 42, cfg[:long_wait_minutes]
   end
 end

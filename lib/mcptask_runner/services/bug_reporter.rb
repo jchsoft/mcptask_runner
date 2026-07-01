@@ -10,8 +10,8 @@ module McptaskRunner
   # creates a bug piece on mcptask.online, and attaches the most recent run log
   # plus relevant config files.
   #
-  # Bugs are routed into a dedicated Epic when config/bug_destination.yml is
-  # present in the project root — keeps auto-detected failures out of the
+  # Bugs are routed into a dedicated Epic when config/mcptask_runner.yml has a
+  # bug_destination: section — keeps auto-detected failures out of the
   # regular backlog. Env override: MCPTASK_BUG_PARENT_ID (relative_id of the
   # destination Epic) wins over the file, matching the "explicit beats config"
   # pattern of the other MCPTASK_*_ID env vars.
@@ -108,7 +108,7 @@ module McptaskRunner
     end
 
     # Returns Integer relative_id of the Epic that should hold this bug, or nil to
-    # create at the project root. Priority: MCPTASK_BUG_PARENT_ID env > config/bug_destination.yml > nil.
+    # create at the project root. Priority: MCPTASK_BUG_PARENT_ID env > config/mcptask_runner.yml (bug_destination:) > nil.
     def bug_parent_id
       env_value = ENV[BUG_PARENT_ENV].to_s
       return env_value.to_i if env_value.match?(/\A\d+\z/) && env_value.to_i.positive?
