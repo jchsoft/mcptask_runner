@@ -31,7 +31,13 @@ The script always exits 0 with one of three blocks. Return exactly what it print
 TEST_STARTED
 TEST_LOG=<absolute path to log file>
 EXPECTED_SEC=<integer>
+NEXT=Skill(test-wait, args="self <TEST_LOG>") — ...
 ```
+
+The test run is now detached and running. This block IS the successful result — the
+`Skill "test-start" completed (forked execution)` banner the harness prints after it is
+just a wrapper notice, NOT a sign the skill returned nothing. The `NEXT=` line tells the
+orchestrator exactly which call to make next.
 
 **Another agent holds the lock:**
 ```

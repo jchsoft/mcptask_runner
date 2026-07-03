@@ -39,6 +39,13 @@ For non-adaptive types: fixed defaults `file`=120, `system_file`=180, `line`=60.
 
 ## Step 3: Drive the state machine
 
+Each sub-skill runs in a Haiku **fork**. After it returns, the harness prints a line like
+`Skill "test-start" completed (forked execution)` — that is a normal wrapper notice, NOT an
+error and NOT "empty output". The structured block printed **above** it (`TEST_STARTED` /
+`TEST_LOG=` / `NEXT=`, or `NOT_FINISHED`, `FINISHED_SELF`, …) IS the sub-skill's result — parse
+that block and follow the state machine. If a block looks truncated or confusing, re-invoke the
+same sub-skill; **never** abandon the state machine and run the test command yourself.
+
 ```
 outer_iterations = 0
 while outer_iterations < 10:
@@ -162,4 +169,6 @@ Only call `~/.claude/bin/test_lock kill` if the waiter loop exhausted its iterat
 - **Never** substitute a Bash loop (e.g. `until [ ! -f lock ]; do sleep 30; done; tail LOG`) for `/test-wait`. Lock-absence is not the completion signal — `/test-wait` waits on the `Exit code: N` footer and returns the structured `FINISHED_SELF`/`EXIT_CODE`/log-tail you need for the report and duration save.
 - **Never** invoke Monitor for waits.
 - **Never** read `latest_test-runner.log` — `/test-start` returns the correct path; use it.
+- **Never** hunt for the log yourself (e.g. `ls /tmp/test-runner*`). The run's log lives under `~/.claude/logs/projects/<hash>/`, and `/test-start` already handed you its exact path in `TEST_LOG=`. If you didn't capture it, re-invoke `/test-start`.
+- **Never** fall back to running the test command directly (`bin/rails test` / `test:system` / `test:all`) because a sub-skill "looked like it didn't work". These sub-skills are Bash-only forks and DO work — the fork-unreliability caveat is about MCP-backed skills, not these. A confusing return means retry the state machine, not bypass it. A raw run also skips the shared lock and can collide with another agent's system tests.
 - If you see `TEST_LOCKED`, never kill the other agent's lock. Wait it out via `/test-wait other`.
