@@ -27,6 +27,8 @@ You (the main agent) drive the state machine directly. Do NOT poll logs yourself
 
 For full-suite types (`unit`/`system`/`all`): read `tmp/test_durations.json` once via `cat tmp/test_durations.json 2>/dev/null || true`.
 
+**Always recompute `expected_sec` from the `data[TYPE]` entry matching THIS command's type key** (Step 1). Never carry over a value from a prior run in the same session — running `unit` then `system` must read `data['system']`, not reuse the `unit` number.
+
 If JSON has `data[TYPE]`:
 - `expected_sec = max(last_duration_ms, max_duration_ms) * 1.5 / 1000` (seconds)
 - Clamp: `unit` min 120s; `system`/`all` min 300s; max 2400s for all.
@@ -63,6 +65,10 @@ while outer_iterations < 10:
     continue                               # back to outer loop, retry test-start
 
   if result starts with "TEST_STARTED":
+    # EXPECTED_SEC is ONLY a wait-cycle hint (floor 6 ≈ 54min below). If it looks
+    # absurdly small (e.g. 42s for a system suite), IGNORE it — do NOT re-derive it
+    # mid-run and NEVER replace /test-wait with a Bash lock-poll loop. The floor
+    # guarantees enough cycles regardless of a bad estimate.
     max_waits = max(6, min(8, ceil(EXPECTED_SEC / 540) + 2))  # floor 6 → ≥54min; ROR system-test suites run ~30min+
     waits = 0
     while waits < max_waits:
@@ -153,6 +159,7 @@ Only call `~/.claude/bin/test_lock kill` if the waiter loop exhausted its iterat
 ## Important
 
 - **Never** poll the log file directly. Only `/test-wait` does that, via `~/.claude/bin/ci_wait`.
+- **Never** substitute a Bash loop (e.g. `until [ ! -f lock ]; do sleep 30; done; tail LOG`) for `/test-wait`. Lock-absence is not the completion signal — `/test-wait` waits on the `Exit code: N` footer and returns the structured `FINISHED_SELF`/`EXIT_CODE`/log-tail you need for the report and duration save.
 - **Never** invoke Monitor for waits.
 - **Never** read `latest_test-runner.log` — `/test-start` returns the correct path; use it.
 - If you see `TEST_LOCKED`, never kill the other agent's lock. Wait it out via `/test-wait other`.
