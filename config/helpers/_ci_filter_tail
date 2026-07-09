@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# _ci_filter_tail — strip noise from bin/ci log tail.
+#
+# Reads CI log lines on stdin, emits signal-only output on stdout:
+#   - strips ANSI color escapes
+#   - drops Sprockets/Propshaft asset compile spam ("Writing /...")
+#   - drops Bundler progress lines
+#   - drops Rails INFO logs ("I, [timestamp] INFO -- :")
+#   - drops Rouge deprecation noise
+#   - drops screenshot path lines (path alone is useless without image)
+#   - collapses runs of pure minitest progress dots/S into one placeholder
+#   - collapses consecutive blank lines
+#
+# Keeps: ✅/❌ step markers, error messages, [MinitestRetry] msgs, backtraces,
+# test summary lines, "Exit code: N" footer.
+#
+# Used by ~/.claude/bin/ci_wait on EXIT_CODE != 0. Never run on success
+# tail — success path emits ALL_OK with no log content.
+set -u
+
+sed -E 's/\x1B\[[0-9;]*[mGKHF]//g' | \
+awk '
+BEGIN { prev_blank = 0; prev_progress = 0 }
+{
+  if ($0 ~ /^Writing \//) next
+  if ($0 ~ /^Compiled .* in [0-9]+/) next
+  if ($0 ~ /^Bundler: (Using|Fetching) /) next
+  if ($0 ~ /^I, \[[0-9]/) next
+  if ($0 ~ /\[DEPRECATED\] Rouge::Formatters/) next
+  if ($0 ~ /^\[Screenshot Image\]: /) next
+
+  if ($0 ~ /^[.SFEX ]+$/) {
+    if (prev_progress) next
+    prev_progress = 1
+    print "[... minitest progress ...]"
+    next
+  }
+  prev_progress = 0
+
+  if (NF == 0) {
+    if (prev_blank) next
+    prev_blank = 1
+  } else {
+    prev_blank = 0
+  }
+  print
+}
+'

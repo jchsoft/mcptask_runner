@@ -18,9 +18,10 @@ module McptaskRunner
     # so Reek does not flag the (skill, dest) DataClump across those private methods.
     SkillEntry = Struct.new(:name, :dest, :gem_hash, :host_hash, :baseline, keyword_init: true)
 
-    def initialize(target_dir: Dir.pwd, force: ENV['FORCE'] == '1')
-      @target_dir = File.expand_path(target_dir)
-      @force      = force
+    def initialize(target_dir: Dir.pwd, force: ENV['FORCE'] == '1', dirs: {})
+      @target_dir     = File.expand_path(target_dir)
+      @force          = force
+      @helper_bin_dir = dirs[:helper_bin] || SkillInstaller.default_helper_bin_dir
     end
 
     def self.call(**kwargs)
@@ -29,7 +30,7 @@ module McptaskRunner
 
     def call
       update_skills
-      SkillInstaller.check_helper_binaries
+      SkillInstaller.install_helper_binaries(@helper_bin_dir)
       sync_permissions
     end
 

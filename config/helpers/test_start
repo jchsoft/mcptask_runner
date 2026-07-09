@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# test_start — acquire the global test lock or report another agent's run,
+# launch run_with_log <test-cmd> detached, emit structured output for /test-start.
+#
+# Args:
+#   $1   = expected_sec (integer, hint for /test-wait timeout)
+#   $2.. = test command tokens (e.g. bin/rails test test/foo_test.rb)
+#
+# Emits one of:
+#   TEST_STARTED
+#   TEST_LOG=<path>
+#   EXPECTED_SEC=<int>
+#
+#   TEST_LOCKED
+#   OTHER_LOG=<path or "unknown">
+#   OTHER_PROJECT=<path>
+#   OTHER_REMAINING=<string>
+#
+#   TEST_ERROR
+#   REASON=<short>
+#   <diagnostic tail>
+set -u
+
+if [ $# -lt 2 ]; then
+  echo "TEST_ERROR"
+  echo "REASON=usage"
+  echo "usage: test_start <expected_sec> <command...>"
+  exit 0
+fi
+
+expected_sec="$1"
+shift
+caller="test-runner"
+command="$*"
+
+acquire_output=$(~/.claude/bin/test_lock acquire "$caller" "$command" 2>&1) || true
+first_line=$(printf '%s\n' "$acquire_output" | head -1)
+
+if printf '%s' "$first_line" | grep -q '^LOCKED'; then
+  other_log=$(printf '%s\n' "$acquire_output" | grep '^LOGFILE=' | head -1 | cut -d= -f2-)
+  other_project=$(printf '%s\n' "$acquire_output" | grep '^PROJECT=' | head -1 | cut -d= -f2-)
+  other_remaining=$(printf '%s\n' "$acquire_output" | grep '^ESTIMATED_REMAINING=' | head -1 | cut -d= -f2-)
+  echo "TEST_LOCKED"
+  echo "OTHER_LOG=${other_log:-unknown}"
+  echo "OTHER_PROJECT=${other_project:-unknown}"
+  echo "OTHER_REMAINING=${other_remaining:-unknown}"
+  exit 0
+fi
+
+if ! printf '%s' "$first_line" | grep -q '^ACQUIRED'; then
+  echo "TEST_ERROR"
+  echo "REASON=acquire_unexpected_output"
+  printf '%s\n' "$acquire_output"
+  exit 0
+fi
+
+# Lock acquired. Kill stale browsers (cheap; harmless for unit tests).
+pkill -f 'geckodriver' 2>/dev/null || true
+pkill -f 'firefox.*--marionette' 2>/dev/null || true
+sleep 1
+pkill -9 -f 'geckodriver' 2>/dev/null || true
+pkill -9 -f 'firefox.*--marionette' 2>/dev/null || true
+
+# Launch run_with_log fully detached.
+tmpout=$(mktemp "${TMPDIR:-/tmp}/test_start.XXXXXX")
+nohup ~/.claude/bin/run_with_log "$caller" "$@" > "$tmpout" 2>&1 < /dev/null &
+rwl_pid=$!
+disown "$rwl_pid" 2>/dev/null || true
+
+# Wait up to 10s for the "LOG: <path>" line to appear.
+test_log=""
+for _ in $(seq 1 40); do
+  if [ -s "$tmpout" ] && grep -q '^LOG: ' "$tmpout"; then
+    test_log=$(grep '^LOG: ' "$tmpout" | head -1 | sed 's/^LOG: //')
+    break
+  fi
+  sleep 0.25
+done
+
+if [ -z "$test_log" ]; then
+  echo "TEST_ERROR"
+  echo "REASON=log_not_started"
+  cat "$tmpout" 2>/dev/null | head -40
+  rm -f "$tmpout"
+  exit 0
+fi
+rm -f "$tmpout"
+
+echo "TEST_STARTED"
+echo "TEST_LOG=$test_log"
+echo "EXPECTED_SEC=$expected_sec"
+echo "NEXT=Skill(test-wait, args=\"self $test_log\") — the run is now detached; poll it with /test-wait. Do NOT run the test command yourself."

@@ -7,13 +7,18 @@ require 'json'
 module McptaskRunner
   # Shared primitive used by Installer and Updater: constants, skill copy helpers, manifest I/O.
   module SkillInstaller
-    SKILLS_SOURCE_DIR = File.expand_path('../../../config/skills', __dir__)
+    SKILLS_SOURCE_DIR  = File.expand_path('../../../config/skills', __dir__)
+    HELPERS_SOURCE_DIR = File.expand_path('../../../config/helpers', __dir__)
     SKILL_NAMES = %w[
       ci-runner ci-start ci-wait wait-unlock
       test-runner test-start test-wait
       discover memory-search mcptask-read mcptask-write
     ].freeze
-    HELPER_BINARIES = %w[ci_wait ci_start test_start test_lock run_with_log].freeze
+    # Full dependency closure the CI/test skills need in ~/.claude/bin — the skills
+    # invoke the first few, and those shell out (via absolute ~/.claude/bin/ paths) to
+    # the rest. Ship all of them from config/helpers/ so a fresh install is self-contained.
+    HELPER_BINARIES = %w[ci_wait ci_start test_start test_lock run_with_log
+                         check_test_lock _ci_filter_tail kill_tree].freeze
     MANIFEST_FILE   = '.mcptask_runner_manifest.json'
 
     module_function
@@ -59,14 +64,30 @@ module McptaskRunner
       File.write(path, JSON.pretty_generate(data))
     end
 
-    def check_helper_binaries
-      bin_dir = File.expand_path('~/.claude/bin')
-      missing = HELPER_BINARIES.reject { |b| File.exist?(File.join(bin_dir, b)) }
-      return if missing.empty?
+    def default_helper_bin_dir
+      File.expand_path('~/.claude/bin')
+    end
 
-      warn '[SkillInstaller] WARNING: missing helper binaries in ~/.claude/bin (required by CI/test skills):'
-      missing.each { |b| warn "  • #{b}" }
-      warn '[SkillInstaller] Install these from the mcptask_runner dev environment before using CI/test skills.'
+    def helper_src(binary)
+      File.join(HELPERS_SOURCE_DIR, binary)
+    end
+
+    # Copies the bundled CI/test helper binaries from config/helpers/ into bin_dir
+    # (default ~/.claude/bin), making a fresh install self-contained. Overwrites any
+    # existing copy and restores the executable bit. Warns — rather than raising — if a
+    # source binary is missing from the gem so the rest of the install still completes.
+    def install_helper_binaries(bin_dir = default_helper_bin_dir)
+      FileUtils.mkdir_p(bin_dir)
+      installed = HELPER_BINARIES.map do |binary|
+        source = helper_src(binary)
+        next warn("[SkillInstaller] WARNING: bundled helper binary missing from gem: #{binary}") unless File.exist?(source)
+
+        dest = File.join(bin_dir, binary)
+        FileUtils.cp(source, dest)
+        FileUtils.chmod(0o755, dest)
+        binary
+      end.compact
+      puts "[SkillInstaller] Helper binaries: #{installed.size} installed into #{bin_dir}"
     end
   end
 end

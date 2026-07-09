@@ -27,5 +27,5 @@ SkillInstaller::SKILL_NAMES.each do |skill|
 end
 
 SkillInstaller.write_manifest(target, manifest)
-SkillInstaller.check_helper_binaries
+SkillInstaller.install_helper_binaries
 puts "[sync-skills] #{SkillInstaller::SKILL_NAMES.size} skills synced into .claude/skills/"

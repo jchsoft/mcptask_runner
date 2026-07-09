@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# ci_wait <log_path> <mode:self|other> [max_seconds]
+# Polls log every 60s for a line matching "^Exit code: N".
+# Always exits 0 with one of these structured outputs on stdout:
+#
+#   FINISHED_SELF
+#   EXIT_CODE=N
+#   ---BEGIN_LOG_TAIL---
+#   <last 200 lines of log>
+#   ---END_LOG_TAIL---
+#
+#   FINISHED_OTHER
+#
+#   NOT_FINISHED
+#   LAST=<last non-empty log line>
+#
+#   FAILED_EXTERNAL
+#   REASON=<short string>
+#
+# Non-zero exit only for invalid args.
+set -u
+
+log="${1:?usage: ci_wait <log_path> <mode:self|other> [max_seconds]}"
+mode="${2:?usage: ci_wait <log_path> <mode:self|other> [max_seconds]}"
+max="${3:-540}"
+case "$mode" in self|other) ;; *) echo "bad mode: $mode" >&2; exit 2;; esac
+
+# Reject obviously fabricated paths before we waste 9 minutes polling something
+# that never existed. ci_start always emits a timestamped path inside a sha256
+# project slug dir; `latest_*.log` symlinks and "unknown" sentinels are
+# never legitimate inputs.
+case "$log" in
+  unknown|""|*/latest_*.log)
+    echo "FAILED_EXTERNAL"
+    echo "REASON=invalid_log_path"
+    echo "PATH=$log"
+    exit 0
+    ;;
+esac
+
+# Fast-fail if the log file is missing. Brief grace window (5s) covers a
+# legitimate ci_start race; anything longer is a fabricated path and would
+# otherwise loop NOT_FINISHED until max_seconds.
+if [ ! -f "$log" ]; then
+  sleep 5
+  if [ ! -f "$log" ]; then
+    echo "FAILED_EXTERNAL"
+    echo "REASON=log_missing"
+    echo "PATH=$log"
+    exit 0
+  fi
+fi
+
+deadline=$(( $(date +%s) + max ))
+lock=/tmp/claude_test_run.lock
+
+has_footer() {
+  [ -f "$log" ] && tail -5 "$log" 2>/dev/null | grep -qE '^Exit code: [0-9]+'
+}
+
+emit_finished() {
+  local ec
+  ec=$(grep -E '^Exit code: ' "$log" | tail -1 | awk '{print $3}')
+  if [ "$mode" = "other" ]; then
+    echo "FINISHED_OTHER"
+    return
+  fi
+  echo "FINISHED_SELF"
+  echo "EXIT_CODE=${ec:-1}"
+  # On success, omit the log tail. Saves ~28KB per turn in the parent's
+  # conversation context (assets/dots/deprecations carry no signal once
+  # EXIT_CODE=0 confirms green).
+  if [ "${ec:-1}" = "0" ]; then
+    echo "ALL_OK"
+    # Prefer the final structured summary block when bin/ci emits one
+    # (mcptask_runner-style: "📊 TOTAL RESULTS" → "CI SUMMARY" → step lines).
+    # Otherwise fall back to grep'd per-file Minitest summaries
+    # (Rails-style: "Finished in / N runs / passed in" lines).
+    if grep -q '^📊 TOTAL RESULTS' "$log" 2>/dev/null; then
+      awk '/^📊 TOTAL RESULTS/{found=1} found' "$log" \
+        | sed -E 's/\x1B\[[0-9;]*[mGKHF]//g' \
+        | grep -vE '^[=-]{5,}|^Finished: |^Exit code:|^\.+$|^[. ]+$'
+    else
+      grep -E '^Finished in [0-9]|runs, [0-9]+ assertions|passed in [0-9]' "$log" \
+        | tail -20 | sed -E 's/\x1B\[[0-9;]*[mGKHF]//g'
+    fi
+    return
+  fi
+  # On failure, emit the tail through _ci_filter_tail so the model sees
+  # actual errors instead of 80% build/progress spam.
+  echo "---BEGIN_LOG_TAIL---"
+  tail -200 "$log" | "$(dirname "$0")/_ci_filter_tail"
+  echo "---END_LOG_TAIL---"
+}
+
+while true; do
+  if has_footer; then
+    emit_finished
+    exit 0
+  fi
+
+  # Abnormal termination: COMMAND_PID in lockfile but process is dead and no footer.
+  if [ -f "$lock" ]; then
+    cmd_pid=$(grep '^COMMAND_PID=' "$lock" 2>/dev/null | cut -d= -f2)
+    if [ -n "${cmd_pid:-}" ] && ! kill -0 "$cmd_pid" 2>/dev/null; then
+      sleep 2  # grace window for footer flush
+      if ! has_footer; then
+        echo "FAILED_EXTERNAL"
+        echo "REASON=command_pid_${cmd_pid}_dead_no_footer"
+        [ -f "$log" ] && tail -50 "$log"
+        exit 0
+      fi
+    fi
+  fi
+
+  if [ "$(date +%s)" -ge "$deadline" ]; then
+    last=$(tail -1 "$log" 2>/dev/null | tr -d '\n' | cut -c1-120)
+    echo "NOT_FINISHED"
+    echo "LAST=${last:-}"
+    exit 0
+  fi
+
+  sleep 60
+done

@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# kill_tree - Recursively kill a process tree (macOS compatible)
+# Usage: kill_tree <pid> [--include-orphans]
+#
+# Sends SIGTERM to entire process tree, waits 2s, then SIGKILL survivors.
+# With --include-orphans: also kills leftover geckodriver/firefox processes.
+
+kill_descendants() {
+  local pid="$1"
+  local children
+  children=$(pgrep -P "$pid" 2>/dev/null) || true
+
+  for child in $children; do
+    kill_descendants "$child"
+  done
+
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -TERM "$pid" 2>/dev/null || true
+  fi
+}
+
+force_kill_descendants() {
+  local pid="$1"
+  local children
+  children=$(pgrep -P "$pid" 2>/dev/null) || true
+
+  for child in $children; do
+    force_kill_descendants "$child"
+  done
+
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+}
+
+kill_orphans() {
+  pkill -f 'geckodriver' 2>/dev/null || true
+  pkill -f 'firefox.*--marionette' 2>/dev/null || true
+  sleep 1
+  pkill -9 -f 'geckodriver' 2>/dev/null || true
+  pkill -9 -f 'firefox.*--marionette' 2>/dev/null || true
+}
+
+main() {
+  local pid="${1:?Usage: kill_tree <pid> [--include-orphans]}"
+  local include_orphans=false
+
+  if [[ "${2:-}" == "--include-orphans" ]]; then
+    include_orphans=true
+  fi
+
+  if ! kill -0 "$pid" 2>/dev/null; then
+    echo "Process $pid not found (already dead)"
+    [[ "$include_orphans" == true ]] && kill_orphans
+    exit 0
+  fi
+
+  echo "Sending SIGTERM to process tree rooted at $pid..."
+  kill_descendants "$pid"
+
+  sleep 2
+
+  # Check if root is still alive, force kill if needed
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "Process $pid still alive, sending SIGKILL..."
+    force_kill_descendants "$pid"
+    sleep 1
+  fi
+
+  if kill -0 "$pid" 2>/dev/null; then
+    echo "WARNING: Process $pid survived SIGKILL"
+  else
+    echo "Process tree $pid terminated"
+  fi
+
+  if [[ "$include_orphans" == true ]]; then
+    echo "Cleaning up orphaned browser processes..."
+    kill_orphans
+  fi
+}
+
+main "$@"

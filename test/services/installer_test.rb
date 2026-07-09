@@ -13,6 +13,7 @@ class InstallerTest < Minitest::Test
     @target_dir      = File.join(@tmpdir, 'project_name')
     @launch_agents   = File.join(@tmpdir, 'LaunchAgents')
     @log_base_dir    = File.join(@tmpdir, 'logs')
+    @helper_bin      = File.join(@tmpdir, 'claude_bin')
     FileUtils.mkdir_p(@target_dir)
 
     @prev_mt     = ENV.delete('MCPTASK_TOKEN')
@@ -30,7 +31,7 @@ class InstallerTest < Minitest::Test
   def build(opts = {})
     Klass.new(
       target_dir:       @target_dir,
-      dirs:             { launch_agents: @launch_agents, log_base: @log_base_dir },
+      dirs:             { launch_agents: @launch_agents, log_base: @log_base_dir, helper_bin: @helper_bin },
       mode:             'mcptask_runner:auto:squash:today',
       platform:         'darwin19.0.0',
       **opts
@@ -197,6 +198,23 @@ class InstallerTest < Minitest::Test
     SI::SKILL_NAMES.each do |skill|
       path = File.join(SI::SKILLS_SOURCE_DIR, skill, 'SKILL.md')
       assert File.exist?(path), "Bundled skill missing: config/skills/#{skill}/SKILL.md"
+    end
+  end
+
+  # --- helper binaries ---
+
+  def test_all_bundled_helper_binaries_present
+    SI::HELPER_BINARIES.each do |binary|
+      assert File.exist?(SI.helper_src(binary)), "Bundled helper binary missing: config/helpers/#{binary}"
+    end
+  end
+
+  def test_installs_helper_binaries_into_bin_dir
+    capture_io { build.call }
+    SI::HELPER_BINARIES.each do |binary|
+      dest = File.join(@helper_bin, binary)
+      assert File.exist?(dest), "Helper binary not installed: #{binary}"
+      assert File.executable?(dest), "Helper binary not executable: #{binary}"
     end
   end
 

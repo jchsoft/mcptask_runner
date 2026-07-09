@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# ci_start — acquire the global CI lock or report another agent's run,
+# launch run_with_log detached, emit structured output for the /ci-start skill.
+#
+# Emits one of:
+#   CI_STARTED
+#   CI_LOG=<path>
+#   EXPECTED_SEC=<int>
+#
+#   CI_LOCKED
+#   OTHER_LOG=<path or "unknown">
+#   OTHER_PROJECT=<path>
+#   OTHER_REMAINING=<string>
+#
+#   CI_ERROR
+#   REASON=<short>
+#   <diagnostic tail>
+set -u
+
+caller="ci-runner"
+command="bin/ci"
+
+acquire_output=$(~/.claude/bin/test_lock acquire "$caller" "$command" 2>&1) || true
+first_line=$(printf '%s\n' "$acquire_output" | head -1)
+
+if printf '%s' "$first_line" | grep -q '^LOCKED'; then
+  other_log=$(printf '%s\n' "$acquire_output" | grep '^LOGFILE=' | head -1 | cut -d= -f2-)
+  other_project=$(printf '%s\n' "$acquire_output" | grep '^PROJECT=' | head -1 | cut -d= -f2-)
+  other_remaining=$(printf '%s\n' "$acquire_output" | grep '^ESTIMATED_REMAINING=' | head -1 | cut -d= -f2-)
+  echo "CI_LOCKED"
+  echo "OTHER_LOG=${other_log:-unknown}"
+  echo "OTHER_PROJECT=${other_project:-unknown}"
+  echo "OTHER_REMAINING=${other_remaining:-unknown}"
+  exit 0
+fi
+
+if ! printf '%s' "$first_line" | grep -q '^ACQUIRED'; then
+  echo "CI_ERROR"
+  echo "REASON=acquire_unexpected_output"
+  printf '%s\n' "$acquire_output"
+  exit 0
+fi
+
+# Lock acquired. Kill stale browsers.
+pkill -f 'geckodriver' 2>/dev/null || true
+pkill -f 'firefox.*--marionette' 2>/dev/null || true
+sleep 1
+pkill -9 -f 'geckodriver' 2>/dev/null || true
+pkill -9 -f 'firefox.*--marionette' 2>/dev/null || true
+
+# Launch run_with_log fully detached from this shell so it survives the
+# Haiku fork's session closing. nohup + disown + redirect stdin/stdout/stderr.
+tmpout=$(mktemp "${TMPDIR:-/tmp}/ci_start.XXXXXX")
+nohup ~/.claude/bin/run_with_log "$caller" $command > "$tmpout" 2>&1 < /dev/null &
+rwl_pid=$!
+disown "$rwl_pid" 2>/dev/null || true
+
+# Wait up to 10s for the "LOG: <path>" line to appear.
+ci_log=""
+for _ in $(seq 1 40); do
+  if [ -s "$tmpout" ] && grep -q '^LOG: ' "$tmpout"; then
+    ci_log=$(grep '^LOG: ' "$tmpout" | head -1 | sed 's/^LOG: //')
+    break
+  fi
+  sleep 0.25
+done
+
+if [ -z "$ci_log" ]; then
+  echo "CI_ERROR"
+  echo "REASON=log_not_started"
+  cat "$tmpout" 2>/dev/null | head -40
+  rm -f "$tmpout"
+  exit 0
+fi
+rm -f "$tmpout"
+
+# Adaptive expected duration: 1.5× last run, floor 300s, ceiling 1800s.
+expected_sec=600
+durations_file="$(pwd)/tmp/test_durations.json"
+[ ! -f "$durations_file" ] && durations_file="$(pwd)/.claude/test_durations.json"
+if [ -f "$durations_file" ]; then
+  last_ms=$(python3 - <<PY 2>/dev/null || echo 0
+import json
+try:
+  with open("$durations_file") as f:
+    d = json.load(f)
+  print(d.get("ci", {}).get("last_duration_ms", 0))
+except Exception:
+  print(0)
+PY
+)
+  if [ -n "${last_ms:-}" ] && [ "$last_ms" -gt 0 ] 2>/dev/null; then
+    expected_sec=$(( last_ms * 3 / 2000 ))
+    [ "$expected_sec" -lt 300 ] && expected_sec=300
+    [ "$expected_sec" -gt 1800 ] && expected_sec=1800
+  fi
+fi
+
+echo "CI_STARTED"
+echo "CI_LOG=$ci_log"
+echo "EXPECTED_SEC=$expected_sec"

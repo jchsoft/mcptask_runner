@@ -1,0 +1,110 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# PreToolUse hook: blocks Bash commands that run tests/CI when test_lock is active.
+# Reads tool input JSON from stdin, checks if the command matches test/CI patterns,
+# and if the lock is active, blocks execution.
+
+require "json"
+
+LOCKFILE = "/tmp/claude_test_run.lock"
+PIDDIR = File.expand_path("~/.claude/logs/pids")
+
+# Read the tool input from stdin (JSON with tool_name and tool_input)
+input = JSON.parse($stdin.read) rescue {}
+
+# Only check Bash tool calls
+exit 0 unless input["tool_name"] == "Bash"
+
+command = input.dig("tool_input", "command").to_s
+
+# Check if command matches test/CI patterns (only actual commands, not file paths)
+# Match: bin/rails test, bin/ci (as command start or after &&/;), rake test, ruby -I.*test, bundle exec.*test
+test_patterns = [
+  /(?:^|\s|&&|;)\s*(?:ruby\s+)?bin\/rails\s+test/,
+  /(?:^|\s|&&|;)\s*(?:ruby\s+)?bin\/ci(?:\s|$)/,
+  /(?:^|\s|&&|;)\s*rake\s+test/,
+  /(?:^|\s|&&|;)\s*bundle\s+exec.*test/,
+  /(?:^|\s|&&|;)\s*ruby\s+.*test_runner/,
+  /(?:^|\s|&&|;)\s*ruby\s+-I.*test/
+]
+
+exit 0 unless test_patterns.any? { |pat| command.match?(pat) }
+
+# Skip if the command is part of the lock mechanism itself
+exit 0 if command.match?(/test_lock|run_with_log/)
+
+# Check if lock is active
+exit 0 unless File.exist?(LOCKFILE)
+
+lock_data = {}
+File.readlines(LOCKFILE).each do |line|
+  key, value = line.strip.split("=", 2)
+  lock_data[key] = value if key && value
+end
+
+lock_pid = lock_data["PID"].to_i
+lock_started = lock_data["STARTED"].to_i
+now = Time.now.to_i
+age = now - lock_started
+
+# Check if lock is stale via multiple signals
+is_stale = false
+
+# 1. Sentinel dead or age >= 900 → stale
+begin
+  Process.kill(0, lock_pid)
+rescue Errno::ESRCH, Errno::EPERM
+  is_stale = true
+end
+is_stale = true if age >= 900
+
+# 2. COMMAND_PID set and process dead → command finished
+unless is_stale
+  cmd_pid = lock_data["COMMAND_PID"].to_s.strip
+  if !cmd_pid.empty?
+    begin
+      Process.kill(0, cmd_pid.to_i)
+    rescue Errno::ESRCH, Errno::EPERM
+      is_stale = true
+    end
+  end
+end
+
+# 3. PID file gone + lock age >= 10s → run_with_log completed
+lock_caller = lock_data["CALLER"].to_s.strip
+unless is_stale
+  pidfile = File.join(PIDDIR, "#{lock_caller}.pid")
+  is_stale = true if !File.exist?(pidfile) && age >= 10
+end
+
+# 4. PID file exists but PID inside dead → run_with_log crashed
+unless is_stale
+  pidfile = File.join(PIDDIR, "#{lock_caller}.pid")
+  if File.exist?(pidfile)
+    rwl_pid = File.read(pidfile).strip.to_i
+    if rwl_pid > 0
+      begin
+        Process.kill(0, rwl_pid)
+      rescue Errno::ESRCH, Errno::EPERM
+        is_stale = true
+      end
+    end
+  end
+end
+
+if is_stale
+  # Lock is stale, allow
+  exit 0
+end
+
+# Lock is active, block the command
+$stderr.puts "BLOCKED: Test lock is active. Another test/CI run is in progress."
+$stderr.puts "  Caller: #{lock_data['CALLER']}"
+$stderr.puts "  Command: #{lock_data['COMMAND']}"
+$stderr.puts "  Project: #{lock_data['PROJECT']}"
+$stderr.puts "  Started: #{lock_data['HUMAN_TIME']} (#{age}s ago)"
+$stderr.puts ""
+$stderr.puts "Use the test-runner or ci-runner skill instead of running tests directly."
+$stderr.puts "Wait for the current run to finish, or use '~/.claude/bin/test_lock status' to check."
+exit 2

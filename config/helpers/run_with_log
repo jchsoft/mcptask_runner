@@ -1,0 +1,243 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+# run_with_log - Run a command with persistent logging + stall watchdog
+# Usage: run_with_log <caller> <command...>
+#
+# Runs the command, tees stdout/stderr to a persistent log file in ~/.claude/logs/
+# Log survives Claude timeout and process cleanup.
+# Also writes PID file for kill_tree integration.
+#
+# WATCHDOG: Monitors log file for new output. If no output for STALL_TIMEOUT
+# seconds, sends SIGQUIT to Ruby processes to get thread dumps into the log.
+# This helps diagnose DRb deadlocks and hung parallel test workers.
+
+# Fix macOS fork() crash with parallel tests + Selenium threads
+# Must be set BEFORE Ruby starts — setting inside Ruby process is too late
+if [[ "$(uname)" == "Darwin" ]]; then
+  export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+fi
+
+# Per-project log dir: sha256 slug of $PWD prevents cross-project latest_*.log collisions.
+project_slug="$(printf '%s' "$PWD" | shasum -a 256 | cut -c1-12)"
+LOGDIR="$HOME/.claude/logs/projects/${project_slug}"
+PIDDIR="$LOGDIR/pids"
+STALL_TIMEOUT="${STALL_TIMEOUT:-120}"  # seconds without output before triggering thread dump
+WATCHDOG_INTERVAL="${WATCHDOG_INTERVAL:-10}"  # how often watchdog checks (seconds)
+
+usage() {
+  echo "Usage: run_with_log <caller> <command...>"
+  echo "  caller:  identifier (e.g., ci-runner, test-runner)"
+  echo "  command: the command to run"
+  exit 1
+}
+
+rotate_logs() {
+  # Delete logs older than 7 days
+  find "$LOGDIR" -name "*.log" -mtime +7 -delete 2>/dev/null || true
+}
+
+# Watchdog: monitors log file size, triggers Ruby thread dump on stall
+start_watchdog() {
+  local logfile="$1"
+  local cmd_pid="$2"
+
+  (
+    local last_size=0
+    local stall_seconds=0
+    local dump_count=0
+
+    while true; do
+      sleep "$WATCHDOG_INTERVAL"
+
+      # Exit if command is no longer running
+      if ! kill -0 "$cmd_pid" 2>/dev/null; then
+        break
+      fi
+
+      # Check current log size
+      local current_size
+      current_size=$(stat -f%z "$logfile" 2>/dev/null || echo 0)
+
+      if [ "$current_size" -eq "$last_size" ]; then
+        stall_seconds=$(( stall_seconds + WATCHDOG_INTERVAL ))
+      else
+        stall_seconds=0
+        last_size=$current_size
+      fi
+
+      # Stall detected — collect diagnostics
+      if [ "$stall_seconds" -ge "$STALL_TIMEOUT" ]; then
+        dump_count=$(( dump_count + 1 ))
+
+        {
+          echo ""
+          echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+          echo "WATCHDOG: No output for ${stall_seconds}s (stall #${dump_count})"
+          echo "Time: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+          echo ""
+        } >> "$logfile"
+
+        # Find all Ruby processes in the command's process tree
+        local ruby_pids
+        ruby_pids=$(pgrep -P "$cmd_pid" -f 'ruby' 2>/dev/null || true)
+        # Also check grandchildren (parallel workers are children of the master)
+        for child in $(pgrep -P "$cmd_pid" 2>/dev/null || true); do
+          local grandchild_rubies
+          grandchild_rubies=$(pgrep -P "$child" -f 'ruby' 2>/dev/null || true)
+          ruby_pids="$ruby_pids $grandchild_rubies"
+        done
+        # Also include cmd_pid itself if it's ruby
+        if ps -p "$cmd_pid" -o command= 2>/dev/null | grep -q 'ruby'; then
+          ruby_pids="$cmd_pid $ruby_pids"
+        fi
+        # Deduplicate
+        ruby_pids=$(echo "$ruby_pids" | tr ' ' '\n' | sort -u | grep -v '^$')
+
+        if [ -n "$ruby_pids" ]; then
+          {
+            echo "WATCHDOG: Sampling Ruby processes (macOS sample tool):"
+            echo "PIDs: $ruby_pids"
+            echo ""
+          } >> "$logfile"
+
+          # Use macOS `sample` to get stack traces — writes directly to logfile
+          # This is more reliable than SIGQUIT which gets lost in pipe redirects
+          for rpid in $ruby_pids; do
+            if kill -0 "$rpid" 2>/dev/null; then
+              {
+                echo "--- sample PID $rpid (1 second) ---"
+              } >> "$logfile"
+              sample "$rpid" 1 -file /tmp/watchdog_sample_${rpid}.txt 2>/dev/null || true
+              if [ -f "/tmp/watchdog_sample_${rpid}.txt" ]; then
+                cat "/tmp/watchdog_sample_${rpid}.txt" >> "$logfile"
+                rm -f "/tmp/watchdog_sample_${rpid}.txt"
+              else
+                echo "(sample failed for PID $rpid)" >> "$logfile"
+              fi
+            fi
+          done
+
+          {
+            echo ""
+            echo "WATCHDOG: Stack trace collection complete"
+            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            echo ""
+          } >> "$logfile"
+        else
+          {
+            echo "WATCHDOG: No Ruby processes found in tree of PID $cmd_pid"
+            echo "Process tree:"
+            ps -o pid,ppid,state,command -g "$(pgrep -P "$cmd_pid" 2>/dev/null | tr '\n' ',')" 2>/dev/null || echo "(unable to list)"
+            echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            echo ""
+          } >> "$logfile"
+        fi
+
+        # Reset stall counter so we don't spam — next dump after another STALL_TIMEOUT
+        stall_seconds=0
+      fi
+    done
+  ) &
+  echo $!
+}
+
+main() {
+  local caller="${1:?$(usage)}"
+  shift
+  if [ $# -eq 0 ]; then usage; fi
+
+  mkdir -p "$LOGDIR" "$PIDDIR"
+
+  # Rotate old logs
+  rotate_logs
+
+  # Generate log filename
+  local timestamp
+  timestamp=$(date '+%Y%m%d_%H%M%S')
+  local logfile="${LOGDIR}/${caller}_${timestamp}.log"
+  local pidfile="${PIDDIR}/${caller}.pid"
+  local latest_link="${LOGDIR}/latest_${caller}.log"
+
+  # Create/update symlink to latest log
+  ln -sf "$logfile" "$latest_link"
+
+  # Write header
+  {
+    echo "=== run_with_log ==="
+    echo "Caller: $caller"
+    echo "Command: $*"
+    echo "Started: $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "PID file: $pidfile"
+    echo "Stall watchdog: ${STALL_TIMEOUT}s timeout"
+    echo "===================="
+    echo ""
+  } > "$logfile"
+
+  # Print log path for reference
+  echo "LOG: $logfile"
+
+  # Write log path into lockfile so other agents can find it on LOCKED
+  ~/.claude/bin/test_lock set_logfile "$logfile" 2>/dev/null || true
+
+  # Use FIFO for unambiguous PIDs (no pipeline PID guessing)
+  local fifo
+  fifo=$(mktemp -u "${TMPDIR:-/tmp}/run_with_log.XXXXXX")
+  mkfifo "$fifo"
+  trap "rm -f '$fifo'" EXIT
+
+  # tee reads from FIFO (must start first = reader before writer)
+  tee -a "$logfile" < "$fifo" &
+  local tee_pid=$!
+
+  # Command writes to FIFO — $! is now the REAL command PID
+  "$@" > "$fifo" 2>&1 &
+  local cmd_pid=$!
+
+  # Write PID file
+  echo "$cmd_pid" > "$pidfile"
+
+  # Update lock with actual command PID for staleness detection
+  ~/.claude/bin/test_lock set_command_pid "$cmd_pid" 2>/dev/null || true
+
+  # Start watchdog to detect stalls and collect thread dumps
+  local watchdog_pid
+  watchdog_pid=$(start_watchdog "$logfile" "$cmd_pid")
+
+  # Wait for the ACTUAL command
+  wait "$cmd_pid" 2>/dev/null
+  local exit_code=$?
+
+  # Flush remaining output + kill tee
+  sleep 1
+  kill "$tee_pid" 2>/dev/null || true
+  wait "$tee_pid" 2>/dev/null || true
+
+  # Stop watchdog
+  kill "$watchdog_pid" 2>/dev/null || true
+  wait "$watchdog_pid" 2>/dev/null || true
+
+  # Cleanup FIFO
+  rm -f "$fifo"
+  trap - EXIT
+
+  # Write footer to log
+  {
+    echo ""
+    echo "===================="
+    echo "Finished: $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "Exit code: $exit_code"
+    echo "===================="
+  } >> "$logfile"
+
+  # Clean up PID file
+  rm -f "$pidfile"
+
+  # Auto-release lock if we own it (defense against fork crash before explicit release)
+  ~/.claude/bin/test_lock release_if_owner "$caller" 2>/dev/null || true
+
+  exit "$exit_code"
+}
+
+main "$@"

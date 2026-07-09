@@ -14,6 +14,7 @@ class UpdaterTest < Minitest::Test
     FileUtils.mkdir_p(@target_dir)
 
     @skills_dir = File.join(@target_dir, '.claude', 'skills')
+    @helper_bin = File.join(@tmpdir, 'claude_bin')
     FileUtils.mkdir_p(@skills_dir)
   end
 
@@ -24,7 +25,7 @@ class UpdaterTest < Minitest::Test
   # --- helpers ---
 
   def build(force: false)
-    Klass.new(target_dir: @target_dir, force: force)
+    Klass.new(target_dir: @target_dir, force: force, dirs: { helper_bin: @helper_bin })
   end
 
   def skill_dest(skill)

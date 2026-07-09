@@ -41,6 +41,7 @@ module McptaskRunner
       @force                 = force
       @launch_agents_dir     = dirs[:launch_agents] || File.expand_path('~/Library/LaunchAgents')
       @log_base_dir          = dirs[:log_base] || File.expand_path('~/logs/mcptask_runner')
+      @helper_bin_dir        = dirs[:helper_bin] || SkillInstaller.default_helper_bin_dir
       @mode                  = mode
       @platform              = platform
       @bug_epic_relative_id  = bug_dest && bug_dest[:relative_id]
@@ -53,7 +54,7 @@ module McptaskRunner
 
     def call
       install_skills
-      check_helper_binaries
+      install_helper_binaries
       sync_permissions
       provision_tokens
       configure_mcp_json
@@ -86,8 +87,9 @@ module McptaskRunner
       puts "[Installer] Skills: #{added.size} added, #{skipped.size} skipped."
     end
 
-    def check_helper_binaries
-      SkillInstaller.check_helper_binaries
+    def install_helper_binaries
+      puts '[Installer] Installing helper binaries...'
+      SkillInstaller.install_helper_binaries(@helper_bin_dir)
     end
 
     def provision_tokens

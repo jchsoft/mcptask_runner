@@ -1,0 +1,303 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOCKFILE="/tmp/claude_test_run.lock"
+LOCKDIR="/tmp/claude_test_run.lock.acquiring"
+MAX_AGE=900
+
+# Check if the current lock is stale. Expects $lock_pid, $age, and $LOCKFILE to be set.
+# Returns 0 (true) if stale, 1 (false) if lock is still valid.
+is_lock_stale() {
+  # 1. Sentinel dead or age >= MAX_AGE → stale
+  if ! kill -0 "$lock_pid" 2>/dev/null || [ "$age" -ge "$MAX_AGE" ]; then
+    return 0
+  fi
+
+  # 2. COMMAND_PID set and dead → stale. Set and alive → DEFINITELY not stale (early return).
+  local cmd_pid
+  cmd_pid=$(grep '^COMMAND_PID=' "$LOCKFILE" | cut -d= -f2)
+  if [ -n "$cmd_pid" ]; then
+    if ! kill -0 "$cmd_pid" 2>/dev/null; then
+      return 0
+    fi
+    # Command alive → lock holder still working. Don't fall through to PID-file checks.
+    return 1
+  fi
+
+  # COMMAND_PID empty (run_with_log not yet past set_command_pid). Use pidfile as fallback.
+  # PID file lives in lock holder's per-project dir, not ours — derive slug from PROJECT field
+  # so cross-project peers look at the right path.
+  local caller lock_project peer_slug pidfile
+  caller=$(grep '^CALLER=' "$LOCKFILE" | cut -d= -f2)
+  lock_project=$(grep '^PROJECT=' "$LOCKFILE" | cut -d= -f2)
+  peer_slug=$(printf '%s' "$lock_project" | shasum -a 256 | cut -c1-12)
+  pidfile="$HOME/.claude/logs/projects/${peer_slug}/pids/${caller}.pid"
+
+  # 3. PID file gone + lock age >= 10s → run_with_log completed (10s grace for startup)
+  if [ ! -f "$pidfile" ] && [ "$age" -ge 10 ]; then
+    return 0
+  fi
+
+  # 4. PID file exists but PID inside is dead → run_with_log crashed
+  if [ -f "$pidfile" ]; then
+    local rwl_pid
+    rwl_pid=$(cat "$pidfile" 2>/dev/null || echo "")
+    if [ -n "$rwl_pid" ] && ! kill -0 "$rwl_pid" 2>/dev/null; then
+      return 0
+    fi
+  fi
+
+  # Lock is still valid
+  return 1
+}
+
+acquire() {
+  local caller="${1:?Usage: test_lock acquire <caller> <command>}"
+  local command="${2:?Usage: test_lock acquire <caller> <command>}"
+
+  # Check existing lock
+  if [ -f "$LOCKFILE" ]; then
+    local lock_pid lock_started now age
+    lock_pid=$(grep '^PID=' "$LOCKFILE" | cut -d= -f2)
+    lock_started=$(grep '^STARTED=' "$LOCKFILE" | cut -d= -f2)
+    now=$(date +%s)
+    age=$(( now - lock_started ))
+
+    if ! is_lock_stale; then
+      echo "LOCKED"
+      cat "$LOCKFILE"
+      # Calculate and show estimated remaining time
+      local expected_ms remaining_s
+      expected_ms=$(grep '^EXPECTED_DURATION_MS=' "$LOCKFILE" | cut -d= -f2)
+      if [ -n "$expected_ms" ]; then
+        remaining_s=$(( (lock_started + expected_ms / 1000) - now ))
+        if [ "$remaining_s" -gt 0 ]; then
+          echo "ESTIMATED_REMAINING=$((remaining_s / 60))m $((remaining_s % 60))s"
+        else
+          echo "ESTIMATED_REMAINING=overdue by $(( -remaining_s ))s (may be finishing soon)"
+        fi
+      else
+        echo "ESTIMATED_REMAINING=unknown"
+      fi
+      echo "INSTRUCTION: Tests/CI are already running. DO NOT attempt to remove the lock, kill the process, or bypass this in any way. Simply report this to the user and stop. Then retry after the estimated time."
+      exit 1
+    else
+      # Stale lock: kill sentinel if still alive, then remove lock
+      kill "$lock_pid" 2>/dev/null || true
+      rm -f "$LOCKFILE"
+    fi
+  fi
+
+  # Atomic acquire via mkdir
+  if ! mkdir "$LOCKDIR" 2>/dev/null; then
+    sleep 1
+    if ! mkdir "$LOCKDIR" 2>/dev/null; then
+      echo "LOCKED (lock is being acquired by another agent)"
+      echo "INSTRUCTION: Tests/CI are already running. DO NOT attempt to remove the lock, kill the process, or bypass this in any way. Simply report this to the user and stop. Then retry after the estimated time."
+      exit 1
+    fi
+  fi
+
+  # Double-check after guard
+  if [ -f "$LOCKFILE" ]; then
+    local lock_pid lock_started now age
+    lock_pid=$(grep '^PID=' "$LOCKFILE" | cut -d= -f2)
+    lock_started=$(grep '^STARTED=' "$LOCKFILE" | cut -d= -f2)
+    now=$(date +%s)
+    age=$(( now - lock_started ))
+    if ! is_lock_stale; then
+      rmdir "$LOCKDIR" 2>/dev/null
+      echo "LOCKED"
+      cat "$LOCKFILE"
+      echo "INSTRUCTION: Tests/CI are already running. DO NOT attempt to remove the lock, kill the process, or bypass this in any way. Simply report this to the user and stop. Then retry after the estimated time."
+      exit 1
+    else
+      kill "$lock_pid" 2>/dev/null || true
+      rm -f "$LOCKFILE"
+    fi
+  fi
+
+  # Start sentinel process: stays alive until release or MAX_AGE timeout.
+  # This allows kill -0 to detect if the lock is still "active".
+  # Redirect fds so callers using $(test_lock acquire ...) don't hang waiting
+  # for the sentinel's inherited stdout/stderr to close.
+  sleep "$MAX_AGE" </dev/null >/dev/null 2>&1 &
+  local sentinel_pid=$!
+
+  # Determine expected duration from stored test_durations.json
+  local expected_ms=""
+  local project_dir
+  project_dir="$(pwd)"
+  local durations_file="$project_dir/tmp/test_durations.json"
+  # Fallback to legacy path inside .claude/ for projects not yet migrated
+  [ ! -f "$durations_file" ] && durations_file="$project_dir/.claude/test_durations.json"
+  if [ -f "$durations_file" ]; then
+    # Map caller to duration key
+    local duration_key=""
+    case "$caller" in
+      ci-runner) duration_key="ci" ;;
+      test-runner) duration_key="unit" ;;
+    esac
+    if [ -n "$duration_key" ]; then
+      expected_ms=$(python3 -c "
+import json
+try:
+    with open('$durations_file') as f:
+        data = json.load(f)
+    print(data.get('$duration_key', {}).get('last_duration_ms', ''))
+except:
+    print('')
+" 2>/dev/null || true)
+    fi
+  fi
+  # Defaults: 600s for ci, 240s for tests
+  if [ -z "$expected_ms" ]; then
+    case "$caller" in
+      ci-runner) expected_ms=600000 ;;
+      *)         expected_ms=240000 ;;
+    esac
+  fi
+  local estimated_finish
+  estimated_finish=$(date -v+"$((expected_ms / 1000))"S '+%H:%M:%S' 2>/dev/null || date -d "+$((expected_ms / 1000)) seconds" '+%H:%M:%S' 2>/dev/null || echo "unknown")
+
+  # Write lock with sentinel PID (COMMAND_PID filled later by run_with_log)
+  printf 'PID=%s\nSTARTED=%s\nCALLER=%s\nCOMMAND=%s\nPROJECT=%s\nHUMAN_TIME=%s\nEXPECTED_DURATION_MS=%s\nESTIMATED_FINISH=%s\nCOMMAND_PID=\n' \
+    "$sentinel_pid" "$(date +%s)" "$caller" "$command" "$project_dir" "$(date '+%Y-%m-%d %H:%M:%S')" "$expected_ms" "$estimated_finish" \
+    > "$LOCKFILE"
+
+  rmdir "$LOCKDIR" 2>/dev/null
+  echo "ACQUIRED"
+}
+
+set_command_pid() {
+  local cmd_pid="${1:?Usage: test_lock set_command_pid <pid>}"
+  if [ -f "$LOCKFILE" ]; then
+    sed -i '' "s/^COMMAND_PID=.*/COMMAND_PID=$cmd_pid/" "$LOCKFILE"
+    echo "COMMAND_PID set to $cmd_pid"
+  else
+    echo "No lockfile found"
+    exit 1
+  fi
+}
+
+set_logfile() {
+  local logfile="${1:?Usage: test_lock set_logfile <path>}"
+  if [ -f "$LOCKFILE" ]; then
+    # Escape for sed: replace / with \/
+    local escaped
+    escaped=$(printf '%s' "$logfile" | sed 's/[\/&]/\\&/g')
+    if grep -q '^LOGFILE=' "$LOCKFILE"; then
+      sed -i '' "s/^LOGFILE=.*/LOGFILE=$escaped/" "$LOCKFILE"
+    else
+      printf 'LOGFILE=%s\n' "$logfile" >> "$LOCKFILE"
+    fi
+    echo "LOGFILE set to $logfile"
+  else
+    echo "No lockfile found"
+    exit 1
+  fi
+}
+
+release_if_owner() {
+  local caller="${1:?Usage: test_lock release_if_owner <caller>}"
+  if [ ! -f "$LOCKFILE" ]; then
+    echo "no-lock"
+    exit 0
+  fi
+  local lock_caller lock_project
+  lock_caller=$(grep '^CALLER=' "$LOCKFILE" | cut -d= -f2)
+  lock_project=$(grep '^PROJECT=' "$LOCKFILE" | cut -d= -f2)
+  if [ "$lock_caller" = "$caller" ] && [ "$lock_project" = "$(pwd)" ]; then
+    release
+  else
+    echo "not-owner (caller=$lock_caller project=$lock_project)"
+  fi
+}
+
+kill_command() {
+  if [ ! -f "$LOCKFILE" ]; then
+    echo "No lockfile found, nothing to kill"
+    exit 0
+  fi
+
+  # Ownership check: only the project that acquired the lock can kill it
+  local lock_project
+  lock_project=$(grep '^PROJECT=' "$LOCKFILE" | cut -d= -f2)
+  if [ -n "$lock_project" ] && [ "$lock_project" != "$(pwd)" ]; then
+    echo "DENIED: Lock belongs to another project ($lock_project). You must NOT interfere with it."
+    exit 1
+  fi
+
+  local cmd_pid sentinel_pid
+  cmd_pid=$(grep '^COMMAND_PID=' "$LOCKFILE" | cut -d= -f2)
+  sentinel_pid=$(grep '^PID=' "$LOCKFILE" | cut -d= -f2)
+
+  # Kill command process tree if we have a PID
+  if [ -n "$cmd_pid" ] && kill -0 "$cmd_pid" 2>/dev/null; then
+    echo "Killing command process tree (PID: $cmd_pid)..."
+    ~/.claude/bin/kill_tree "$cmd_pid" --include-orphans
+  else
+    echo "No command process to kill, cleaning up orphans..."
+    pkill -f 'geckodriver' 2>/dev/null || true
+    pkill -f 'firefox.*--marionette' 2>/dev/null || true
+    sleep 1
+    pkill -9 -f 'geckodriver' 2>/dev/null || true
+    pkill -9 -f 'firefox.*--marionette' 2>/dev/null || true
+  fi
+
+  # Kill sentinel
+  if [ -n "$sentinel_pid" ]; then
+    kill "$sentinel_pid" 2>/dev/null || true
+  fi
+
+  # Remove lock
+  rm -f "$LOCKFILE"
+  rmdir "$LOCKDIR" 2>/dev/null || true
+  echo "KILLED and RELEASED"
+}
+
+release() {
+  if [ -f "$LOCKFILE" ]; then
+    # Ownership check: only the project that acquired the lock can release it
+    local lock_project
+    lock_project=$(grep '^PROJECT=' "$LOCKFILE" | cut -d= -f2)
+    if [ -n "$lock_project" ] && [ "$lock_project" != "$(pwd)" ]; then
+      echo "DENIED: Lock belongs to another project ($lock_project). You must NOT interfere with it."
+      exit 1
+    fi
+
+    local lock_pid
+    lock_pid=$(grep '^PID=' "$LOCKFILE" | cut -d= -f2)
+    kill "$lock_pid" 2>/dev/null || true
+  fi
+  rm -f "$LOCKFILE"
+  rmdir "$LOCKDIR" 2>/dev/null || true
+  echo "RELEASED"
+}
+
+status() {
+  if [ -f "$LOCKFILE" ]; then
+    local lock_pid lock_started now age alive
+    lock_pid=$(grep '^PID=' "$LOCKFILE" | cut -d= -f2)
+    lock_started=$(grep '^STARTED=' "$LOCKFILE" | cut -d= -f2)
+    now=$(date +%s)
+    age=$(( now - lock_started ))
+    alive="no"
+    kill -0 "$lock_pid" 2>/dev/null && alive="yes"
+    echo "LOCKED (PID alive: $alive, age: ${age}s)"
+    cat "$LOCKFILE"
+  else
+    echo "FREE"
+  fi
+}
+
+case "${1:-}" in
+  acquire)           acquire "${2:-}" "${3:-}" ;;
+  release)           release ;;
+  release_if_owner)  release_if_owner "${2:-}" ;;
+  status)            status ;;
+  set_command_pid)   set_command_pid "${2:-}" ;;
+  set_logfile)       set_logfile "${2:-}" ;;
+  kill)              kill_command ;;
+  *)                 echo "Usage: test_lock {acquire|release|release_if_owner|status|set_command_pid|set_logfile|kill}" && exit 1 ;;
+esac
