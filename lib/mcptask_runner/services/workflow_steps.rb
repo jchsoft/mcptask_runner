@@ -137,8 +137,8 @@ module McptaskRunner
       s = step_indent(step_num)
       title_suffix = no_merge_warning ? ' (NO MERGE!)' : ''
       lines = []
-      lines << "#{step_num}. CREATE PR:#{title_suffix}"
-      lines << "#{s}- Use skill or .github/pull_request_template.md if exists"
+      lines << "#{step_num}. CREATE PULL REQUEST:#{title_suffix}"
+      lines << "#{s}- Follow .github/pull_request_template.md if it exists"
       lines << "#{s}- Clear summary + mcptask.online task link"
       lines << "#{s}- Do NOT merge — human review only" if no_merge_warning
       lines << "#{s}- Auto-merge after CI passes" if auto_merge_note
@@ -148,7 +148,7 @@ module McptaskRunner
     def add_screenshots_to_pr_step(step_num:)
       s = step_indent(step_num)
       <<~STEP.strip
-        #{step_num}. PR SCREENSHOTS: Invoke /pr-screenshot
+        #{step_num}. PR SCREENSHOTS: Take a screenshot in the system test and add it to the PR
         #{s}- Ensure screenshot shows tested feature (not test failure)
       STEP
     end

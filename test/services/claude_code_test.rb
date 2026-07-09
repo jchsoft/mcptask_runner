@@ -89,7 +89,7 @@ class ClaudeCodeHonestTest < Minitest::Test
         assert_includes instructions, 'UNIT TESTS'
         assert_includes instructions, 'SYSTEM TESTS'
         assert_includes instructions, 'PUSH'
-        assert_includes instructions, 'CREATE PR'
+        assert_includes instructions, 'CREATE PULL REQUEST'
       end
     end
   end
@@ -502,7 +502,7 @@ class ClaudeCodeStoryAutoSquashTest < Minitest::Test
     assert_includes instructions, 'UNIT TESTS'
     assert_includes instructions, 'SYSTEM TESTS'
     assert_includes instructions, 'PUSH'
-    assert_includes instructions, 'CREATE PR'
+    assert_includes instructions, 'CREATE PULL REQUEST'
   end
 
   def test_story_auto_squash_instructions_includes_auto_merge
@@ -626,7 +626,7 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
         assert_includes instructions, 'UNIT TESTS'
         assert_includes instructions, 'SYSTEM TESTS'
         assert_includes instructions, 'PUSH'
-        assert_includes instructions, 'CREATE PR'
+        assert_includes instructions, 'CREATE PULL REQUEST'
       end
     end
   end
@@ -774,7 +774,7 @@ class ClaudeCodeStoryManualTest < Minitest::Test
     assert_includes instructions, 'UNIT TESTS'
     assert_includes instructions, 'SYSTEM TESTS'
     assert_includes instructions, 'PUSH'
-    assert_includes instructions, 'CREATE PR'
+    assert_includes instructions, 'CREATE PULL REQUEST'
   end
 
   def test_story_manual_instructions_emphasizes_no_merge
@@ -825,7 +825,7 @@ class ClaudeCodeStoryManualTest < Minitest::Test
     instructions = story_manual.send(:build_instructions)
     assert_includes instructions, 'SCREENSHOTS'
     assert_includes instructions, 'PR SCREENSHOTS'
-    assert_includes instructions, 'pr-screenshot'
+    assert_includes instructions, 'Take a screenshot in the system test'
   end
 end
 
@@ -885,7 +885,7 @@ class ClaudeCodeQueueAutoSquashTest < Minitest::Test
         assert_includes instructions, 'UNIT TESTS'
         assert_includes instructions, 'SYSTEM TESTS'
         assert_includes instructions, 'PUSH'
-        assert_includes instructions, 'CREATE PR'
+        assert_includes instructions, 'CREATE PULL REQUEST'
       end
     end
   end
@@ -1041,7 +1041,7 @@ class ClaudeCodeOnceAutoSquashTest < Minitest::Test
         assert_includes instructions, 'UNIT TESTS'
         assert_includes instructions, 'SYSTEM TESTS'
         assert_includes instructions, 'PUSH'
-        assert_includes instructions, 'CREATE PR'
+        assert_includes instructions, 'CREATE PULL REQUEST'
       end
     end
   end
@@ -1260,7 +1260,7 @@ class ClaudeCodeTaskManualTest < Minitest::Test
     assert_includes instructions, 'UNIT TESTS'
     assert_includes instructions, 'SYSTEM TESTS'
     assert_includes instructions, 'PUSH'
-    assert_includes instructions, 'CREATE PR'
+    assert_includes instructions, 'CREATE PULL REQUEST'
   end
 
   def test_task_manual_instructions_uses_resume_step_when_resuming
@@ -1322,7 +1322,7 @@ class ClaudeCodeTaskManualTest < Minitest::Test
     instructions = task_manual.send(:build_instructions)
     assert_includes instructions, 'SCREENSHOTS'
     assert_includes instructions, 'PR SCREENSHOTS'
-    assert_includes instructions, 'pr-screenshot'
+    assert_includes instructions, 'Take a screenshot in the system test'
   end
 end
 
@@ -1369,7 +1369,7 @@ class ClaudeCodeTaskAutoSquashTest < Minitest::Test
     assert_includes instructions, 'UNIT TESTS'
     assert_includes instructions, 'SYSTEM TESTS'
     assert_includes instructions, 'PUSH'
-    assert_includes instructions, 'CREATE PR'
+    assert_includes instructions, 'CREATE PULL REQUEST'
   end
 
   def test_task_auto_squash_instructions_uses_resume_step_when_resuming
