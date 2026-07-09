@@ -138,7 +138,7 @@ module McptaskRunner
       title_suffix = no_merge_warning ? ' (NO MERGE!)' : ''
       lines = []
       lines << "#{step_num}. CREATE PULL REQUEST:#{title_suffix}"
-      lines << "#{s}- Follow .github/pull_request_template.md if it exists"
+      lines << "#{s}- Follow #{pr_template_path} if it exists"
       lines << "#{s}- Clear summary + mcptask.online task link"
       lines << "#{s}- Do NOT merge — human review only" if no_merge_warning
       lines << "#{s}- Auto-merge after CI passes" if auto_merge_note
@@ -199,6 +199,13 @@ module McptaskRunner
       Concerns::BugDestinationConfig.load
     rescue LoadError
       { epic_relative_id: nil, epic_name: nil }
+    end
+
+    def pr_template_path
+      require 'mcptask_runner/services/concerns/pr_template_config'
+      Concerns::PrTemplateConfig.load[:path]
+    rescue LoadError
+      Concerns::PrTemplateConfig::DEFAULT_PATH
     end
 
     def run_local_ci_step(step_num:, verify_step_ref: nil)
