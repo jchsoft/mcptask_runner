@@ -40,7 +40,7 @@ class InstallerTest < Minitest::Test
 
   def plist_path
     slug = File.basename(@target_dir).tr('_', '-')
-    File.join(@launch_agents, "com.karelmracek.mcptask-runner-#{slug}.plist")
+    File.join(@launch_agents, "online.mcptask.runner-#{slug}.plist")
   end
 
   def plist_content
@@ -93,11 +93,11 @@ class InstallerTest < Minitest::Test
     dir = File.join(@tmpdir, 'my_project_ii')
     FileUtils.mkdir_p(dir)
     inst = Klass.new(
-      target_dir: dir, dirs: { launch_agents: @launch_agents, log_base: @log_base_dir },
+      target_dir: dir, dirs: { launch_agents: @launch_agents, log_base: @log_base_dir, helper_bin: @helper_bin },
       mode: 'mcptask_runner:manual:today', platform: 'darwin'
     )
     capture_io { inst.call }
-    plist = File.join(@launch_agents, 'com.karelmracek.mcptask-runner-my-project-ii.plist')
+    plist = File.join(@launch_agents, 'online.mcptask.runner-my-project-ii.plist')
     assert File.exist?(plist), "Expected plist with dashed slug"
   end
 
@@ -105,7 +105,7 @@ class InstallerTest < Minitest::Test
 
   def test_plist_contains_correct_label
     capture_io { build.call }
-    assert_match 'com.karelmracek.mcptask-runner-project-name', plist_content
+    assert_match 'online.mcptask.runner-project-name', plist_content
   end
 
   def test_plist_program_arguments_use_bash

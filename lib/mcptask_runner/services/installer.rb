@@ -241,7 +241,7 @@ module McptaskRunner
       end
 
       slug  = project_slug
-      label = "com.karelmracek.mcptask-runner-#{slug}"
+      label = "online.mcptask.runner-#{slug}"
       plist = File.join(@launch_agents_dir, "#{label}.plist")
 
       if File.exist?(plist) && !@force
