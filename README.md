@@ -41,6 +41,35 @@ The install flow performs the following steps in order:
 
 > **Helper binaries** live in the gem at `config/helpers/` and are the version-controlled source of truth. Both `install` and `update` copy them into `~/.claude/bin` (a single machine-global copy shared by every host project), which is where the CI/test skills expect them.
 
+### Activating the LaunchAgent
+
+The installer only **writes** the plist to `~/Library/LaunchAgents/` and prints the activation command — it does **not** load or start it. `RunAtLoad` is `false`, so even once loaded the agent fires only on its `StartCalendarInterval` (weekdays, 08:00), never immediately. `rake mcptask_runner:update` does **not** touch the LaunchAgent at all — only `install` (re)writes the plist.
+
+The label is `online.mcptask.runner-<slug>`, where `<slug>` is the host project directory name with `_` → `-`. Find the exact plist with `ls ~/Library/LaunchAgents/ | grep mcptask-runner`.
+
+```bash
+# Activate (load into launchd) — required once after a fresh install:
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/online.mcptask.runner-<slug>.plist
+
+# Run it right now (don't wait for the 08:00 window):
+launchctl kickstart -k gui/$(id -u)/online.mcptask.runner-<slug>
+
+# Once loaded, the usual start/stop work like on any machine:
+launchctl start online.mcptask.runner-<slug>
+launchctl stop  online.mcptask.runner-<slug>
+```
+
+> Activate the launcher **after** `install`/`update` has put the helper binaries in `~/.claude/bin` — otherwise the scheduled run dies on the missing CI/test helpers.
+
+**Migrating from the old `com.karelmracek.*` label** (installs before v2.7.0 used a stray dev username as the label prefix): shut down the orphaned agent, drop its plist, then re-run `install` to write the new-labeled plist and bootstrap it.
+
+```bash
+launchctl bootout gui/$(id -u)/com.karelmracek.mcptask-runner-<slug> 2>/dev/null
+rm -f ~/Library/LaunchAgents/com.karelmracek.mcptask-runner-<slug>.plist
+bundle exec rake mcptask_runner:install   # update won't rewrite the plist — install does
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/online.mcptask.runner-<slug>.plist
+```
+
 ### `.mcp.json` and tokens
 
 The installer adds an `mcptask-online` SSE entry to `.mcp.json`:
