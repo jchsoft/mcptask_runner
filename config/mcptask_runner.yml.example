@@ -72,3 +72,12 @@
 # waiting_strategy:
 #   short_wait_minutes: 5
 #   long_wait_minutes: 30
+#
+# --- PR template: path to the pull/merge request template file ---
+#
+# The runner tells the AI agent which file to follow when creating a PR.
+# Default is `.github/pull_request_template.md` (GitHub convention).
+# Override for GitLab or repos with a different template location.
+#
+# pr_template:
+#   path: .gitlab/merge_request_templates/Default.md
