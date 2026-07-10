@@ -132,6 +132,32 @@ class InstallerTest < Minitest::Test
     assert_match '<false/>', plist_content
   end
 
+  def test_plist_runs_preventive_bundle_install
+    capture_io { build.call }
+    content = plist_content
+    # bundle check || bundle install guards against stale Gemfile.lock after git pull
+    assert_match 'bundle check', content
+    assert_match 'bundle install', content
+  end
+
+  def test_plist_logs_active_runner_version
+    capture_io { build.call }
+    content = plist_content
+    # active runner version is grepped from Gemfile.lock and echoed to the log on every run,
+    # so a self-update via bundle install is visible
+    assert_match 'mcptask_runner (', content
+    assert_match '[launcher]', content
+    assert_match 'runner now', content
+  end
+
+  def test_plist_reminds_to_refresh_launch_agent_after_install
+    capture_io { build.call }
+    content = plist_content
+    # after a real bundle install the plist may be stale (it is generated once, never self-updates),
+    # so the launcher echoes the refresh command to stdout/log
+    assert_match 'mcptask_runner:install FORCE=1', content
+  end
+
   def test_plist_shell_command_is_xml_escaped
     capture_io { build.call }
     content = plist_content

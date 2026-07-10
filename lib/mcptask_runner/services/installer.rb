@@ -282,7 +282,7 @@ module McptaskRunner
 
     def plist_content(label, slug, rake_task)
       log_path  = File.join(@log_base_dir, "#{slug}.log")
-      cmd       = xml_escape("cd #{@target_dir} && bundle exec rake #{rake_task} >> #{log_path} 2>&1")
+      cmd       = xml_escape(launch_command(rake_task, log_path))
       intervals = (1..5).map { |d| weekday_dict(d) }.join("\n        ")
       env_xml   = env_tokens.map { |k, v| "    <key>#{k}</key>\n    <string>#{v}</string>" }.join("\n")
 
@@ -323,6 +323,23 @@ module McptaskRunner
               <key>Minute</key><integer>0</integer>
             </dict>
       XML
+    end
+
+    # Daily launcher command: keep deps fresh (a stale Gemfile.lock after git pull would
+    # otherwise make `bundle exec` die), log which mcptask_runner version is now active so an
+    # update is visible, and — when bundle actually installed something — remind the user to
+    # refresh this LaunchAgent (its plist is generated once and does not self-update).
+    # All output — including bundle install — goes to the log.
+    def launch_command(rake_task, log_path)
+      ver     = "grep -m1 'mcptask_runner (' Gemfile.lock"
+      remind  = "echo '[launcher] runner may have changed -> refresh the LaunchAgent: " \
+                "bundle exec rake mcptask_runner:install FORCE=1'"
+      "cd #{@target_dir} && { " \
+        "echo \"[launcher] $(date '+%F %T') starting; active $(#{ver})\"; " \
+        "if bundle check; then echo '[launcher] dependencies up to date'; " \
+        "else echo '[launcher] dependencies changed -> bundle install'; " \
+        "bundle install && echo \"[launcher] bundle install done; runner now $(#{ver})\" && #{remind}; fi " \
+        "&& bundle exec rake #{rake_task} ; } >> #{log_path} 2>&1"
     end
 
     def xml_escape(str)
