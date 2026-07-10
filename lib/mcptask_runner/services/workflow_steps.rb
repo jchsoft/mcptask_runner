@@ -16,6 +16,7 @@ module McptaskRunner
       s = step_indent(step_num)
       <<~STEP.strip
         #{step_num}. TASK FETCH:
+        #{s}- ReadMcpResourceTool is a DEFERRED tool: FIRST call ToolSearch with query "select:ReadMcpResourceTool" to load its schema, THEN invoke it. A direct call fails with "not enabled in this context" and kills the session.
         #{s}- INVOKE ReadMcpResourceTool with server="mcptask-online", uri="#{fetch_url}" — DIRECT MCP call. Do NOT use /mcptask-read skill (unreliable in this context). NEVER Bash/curl/Net::HTTP — API uses internal id, returns WRONG piece.
         #{s}- No tasks → STOP, status "no_more_tasks"
         #{s}- Verify not started/completed
@@ -31,7 +32,9 @@ module McptaskRunner
     def load_task_step(step_num:, task_id:)
       s = step_indent(step_num)
       <<~STEP.strip
-        #{step_num}. LOAD TASK: INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{task_id}" — DIRECT MCP call. Do NOT use /mcptask-read skill. NEVER Bash/curl/Net::HTTP.
+        #{step_num}. LOAD TASK:
+        #{s}- ReadMcpResourceTool is a DEFERRED tool: FIRST call ToolSearch with query "select:ReadMcpResourceTool" to load its schema, THEN invoke it. A direct call fails with "not enabled in this context" and kills the session.
+        #{s}- INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{task_id}" — DIRECT MCP call. Do NOT use /mcptask-read skill. NEVER Bash/curl/Net::HTTP.
         #{s}- Output:
         #{s}  TASKRUNNER_TASK_INFO:
         #{s}  ID: <relative_id>
@@ -48,7 +51,9 @@ module McptaskRunner
         STEP
       else
         <<~STEP.chomp
-          1. LOAD STORY: INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{story_id}" — DIRECT MCP. Do NOT use /mcptask-read skill.
+          1. LOAD STORY:
+             - ReadMcpResourceTool is a DEFERRED tool: FIRST call ToolSearch with query "select:ReadMcpResourceTool" to load its schema, THEN invoke it. A direct call fails with "not enabled in this context" and kills the session.
+             - INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{story_id}" — DIRECT MCP. Do NOT use /mcptask-read skill.
              - Review name, description, subtasks
              - Note completed subtasks for context
              - Work on task ##{task_id} (pre-selected by triage)
@@ -58,7 +63,9 @@ module McptaskRunner
       <<~STEPS.chomp
         #{story_step}
 
-        2. LOAD TASK: INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{task_id}" — DIRECT MCP. Do NOT use /mcptask-read skill. NEVER Bash/curl/Net::HTTP.
+        2. LOAD TASK:
+           - ReadMcpResourceTool is a DEFERRED tool: FIRST call ToolSearch with query "select:ReadMcpResourceTool" to load its schema, THEN invoke it. A direct call fails with "not enabled in this context" and kills the session.
+           - INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{task_id}" — DIRECT MCP. Do NOT use /mcptask-read skill. NEVER Bash/curl/Net::HTTP.
            - progress > 0: CONTINUATION → skip steps 3-4, go to step 5
            - progress = 0: proceed normally
            - Output:

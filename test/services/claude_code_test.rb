@@ -490,6 +490,8 @@ class ClaudeCodeStoryAutoSquashTest < Minitest::Test
     assert_includes instructions, 'subtasks'
     assert_includes instructions, 'pre-selected by triage'
     assert_includes instructions, 'mcptask://pieces/jchsoft/123'
+    assert_includes instructions, 'DEFERRED tool'
+    assert_includes instructions, 'select:ReadMcpResourceTool'
   end
 
   def test_story_auto_squash_instructions_includes_workflow_steps
@@ -601,6 +603,25 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
         instructions = today_auto_squash.send(:build_instructions)
         assert_includes instructions, 'project_relative_id=99'
         assert_includes instructions, 'mcptask://pieces/jchsoft/@next'
+      end
+    end
+  end
+
+  # ReadMcpResourceTool is a deferred tool: a direct call is rejected as
+  # "exists but is not enabled in this context", and the runner's
+  # tool-not-enabled watchdog (stream_processing.rb#tool_not_enabled_error?)
+  # mistakes that for an MCP-server disconnect and kills the session. The
+  # TodayAutoSquash prompt fires the fetch alongside `git checkout main` in
+  # turn 1, so the model commits to the call before it reflects — unlike Triage,
+  # whose single-action step 1 lets the model ToolSearch first. Make the
+  # ToolSearch-first step explicit in the prompt and guard it here.
+  def test_today_auto_squash_instructions_tells_model_to_load_deferred_readmcpresource_tool
+    File.stub :exist?, true do
+      File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
+        today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
+        instructions = today_auto_squash.send(:build_instructions)
+        assert_includes instructions, 'DEFERRED tool'
+        assert_includes instructions, 'select:ReadMcpResourceTool'
       end
     end
   end
@@ -1248,6 +1269,8 @@ class ClaudeCodeTaskManualTest < Minitest::Test
     instructions = task_manual.send(:build_instructions)
     assert_includes instructions, 'LOAD TASK'
     assert_includes instructions, 'TASKRUNNER_TASK_INFO'
+    assert_includes instructions, 'DEFERRED tool'
+    assert_includes instructions, 'select:ReadMcpResourceTool'
   end
 
   def test_task_manual_instructions_includes_workflow_steps
