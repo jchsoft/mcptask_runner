@@ -48,6 +48,16 @@ class InstallerTest < Minitest::Test
     File.read(plist_path)
   end
 
+  def script_path
+    slug = File.basename(@target_dir).tr('_', '-')
+    File.join(@helper_bin, "mcptask-runner-#{slug}")
+  end
+
+  def script_content
+    assert File.exist?(script_path), "Launcher script not found at #{script_path}"
+    File.read(script_path)
+  end
+
   # --- skill install ---
 
   def test_installs_all_skills
@@ -108,16 +118,23 @@ class InstallerTest < Minitest::Test
     assert_match 'online.mcptask.runner-project-name', plist_content
   end
 
-  def test_plist_program_arguments_use_bash
+  def test_plist_program_arguments_reference_named_script
     capture_io { build.call }
-    assert_match '<string>/bin/bash</string>', plist_content
-    assert_match '<string>-l</string>',        plist_content
-    assert_match '<string>-c</string>',        plist_content
+    content = plist_content
+    # ProgramArguments points at a named wrapper (not `bash -c …`) so macOS shows a real name
+    assert_match "<string>#{script_path}</string>", content
+    refute_match '/bin/bash', content
   end
 
-  def test_plist_program_arguments_contain_chosen_mode
+  def test_launcher_script_is_executable_with_shebang
+    capture_io { build.call }
+    assert File.executable?(script_path), 'launcher script should be executable'
+    assert_match(/\A#!\/bin\/bash -l/, script_content)
+  end
+
+  def test_launcher_script_contains_chosen_mode
     capture_io { build(mode: 'mcptask_runner:manual:today').call }
-    assert_match 'mcptask_runner:manual:today', plist_content
+    assert_match 'bundle exec rake mcptask_runner:manual:today', script_content
   end
 
   def test_plist_has_five_weekday_intervals
@@ -132,17 +149,17 @@ class InstallerTest < Minitest::Test
     assert_match '<false/>', plist_content
   end
 
-  def test_plist_runs_preventive_bundle_install
+  def test_launcher_script_runs_preventive_bundle_install
     capture_io { build.call }
-    content = plist_content
+    content = script_content
     # bundle check || bundle install guards against stale Gemfile.lock after git pull
     assert_match 'bundle check', content
     assert_match 'bundle install', content
   end
 
-  def test_plist_logs_active_runner_version
+  def test_launcher_script_logs_active_runner_version
     capture_io { build.call }
-    content = plist_content
+    content = script_content
     # active runner version is grepped from Gemfile.lock and echoed to the log on every run,
     # so a self-update via bundle install is visible
     assert_match 'mcptask_runner (', content
@@ -150,20 +167,16 @@ class InstallerTest < Minitest::Test
     assert_match 'runner now', content
   end
 
-  def test_plist_reminds_to_refresh_launch_agent_after_install
+  def test_launcher_script_reminds_to_refresh_launch_agent_after_install
     capture_io { build.call }
-    content = plist_content
     # after a real bundle install the plist may be stale (it is generated once, never self-updates),
-    # so the launcher echoes the refresh command to stdout/log
-    assert_match 'mcptask_runner:install FORCE=1', content
+    # so the launcher echoes the refresh command to the log
+    assert_match 'mcptask_runner:install FORCE=1', script_content
   end
 
-  def test_plist_shell_command_is_xml_escaped
+  def test_launcher_script_redirects_output_to_log
     capture_io { build.call }
-    content = plist_content
-    # && → &amp;&amp;, >> → &gt;&gt;
-    assert_match '&amp;&amp;', content
-    assert_match '&gt;&gt;',   content
+    assert_match %r{exec >> ".*project-name\.log" 2>&1}, script_content
   end
 
   # --- macOS guard ---
