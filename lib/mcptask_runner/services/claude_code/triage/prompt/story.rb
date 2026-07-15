@@ -17,6 +17,8 @@ module McptaskRunner
               Task triage agent. Find next incomplete subtask from Story, recommend model.
               OUTPUT ONLY JSON. No explanations, no commentary.
 
+              #{deferred_tools_note}
+
               STEP 1 - LOAD STORY:
               1. #{mcp_fetch("mcptask://pieces/#{account_code}/#{@story_id}")}
               2. Find subtasks

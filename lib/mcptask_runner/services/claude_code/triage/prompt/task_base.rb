@@ -14,6 +14,8 @@ module McptaskRunner
               Task triage agent. Analyze task, recommend model.
               OUTPUT ONLY JSON. No explanations, no commentary.
 
+              #{deferred_tools_note}
+
               #{branch_detection_step}
 
               STEP 2 - FETCH: #{mcp_fetch(task_fetch_url)}#{fetch_step_suffix}
