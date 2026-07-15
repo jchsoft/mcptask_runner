@@ -61,6 +61,7 @@ module McptaskRunner
     end
 
     def flag_builder_crash(error)
+      report_loop_crash(error)
       return unless @builder
       return if %w[error closed finished].include?(@builder.status)
 
@@ -68,6 +69,21 @@ module McptaskRunner
       EventStream.emit_snapshot(@builder.to_h, force: true)
     rescue StandardError => e
       Logger.warn "[WorkLoop] Failed to flag crash on builder: #{e.message}"
+    end
+
+    # Type-2 auto-bug for an uncaught crash of the loop orchestration itself (above the
+    # per-task ClaudeCodeBase#run hook). Fail-safe via RunnerErrorReporter.maybe_report.
+    def report_loop_crash(error)
+      snap = @builder&.to_h || {}
+      RunnerErrorReporter.maybe_report(
+        status: 'crash',
+        termination: 'loop_crash',
+        error_message: "#{error.class}: #{error.message}",
+        context: {
+          project_name: snap[:project_name], task_id: snap[:task_id], task_name: snap[:task_name],
+          model: snap[:model], machine_id: snap[:machine_id], session_id: snap[:session_id], mode: 'work_loop'
+        }
+      )
     end
   end
 end

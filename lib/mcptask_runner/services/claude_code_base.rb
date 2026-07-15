@@ -212,10 +212,29 @@ module McptaskRunner
       @accumulated_output = ''.dup
       @text_content = ''.dup
 
-      run_with_retry(start_time)
+      run_with_retry(start_time).tap { |result| report_runner_failure(result, start_time) }
     end
 
     private
+
+    # Type-2 auto-bug: if this attempt ended in a HARD failure (status 'error'), file it into
+    # the fixed Errors Epic. Fully fail-safe (RunnerErrorReporter.maybe_report swallows everything);
+    # non-hard/expected terminations (success, stalled_for_genius, urgent_bug_pending, quota…) are
+    # ignored inside the reporter.
+    def report_runner_failure(result, start_time)
+      snap = @snapshot_builder.to_h
+      RunnerErrorReporter.maybe_report(
+        status: result['status'],
+        termination: derive_termination_reason,
+        error_message: result['message'] || snap[:error_message],
+        run_log_path: @run_log&.path,
+        context: {
+          project_name: snap[:project_name], task_id: snap[:task_id], task_name: snap[:task_name],
+          model: snap[:model], machine_id: snap[:machine_id], session_id: snap[:session_id],
+          mode: @log_tag, reason: result['reason'], elapsed_s: (Time.now - start_time).round(1)
+        }
+      )
+    end
 
     # Handoff for a fresh-session restart after a context overflow. The dead session's work lives
     # on disk (git branch + commits), but the new child starts with empty context and no memory of
