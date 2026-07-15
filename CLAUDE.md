@@ -20,7 +20,7 @@ Generic exploration order (Memory → `/discover` → CodeGraph → LSP → Read
 
 ## Logs
 - **Per-run state** (start here for hung runs): `log/runs/run_*.json` — `RunLog`, refreshed per heartbeat. Off: `MCPTASK_RUN_LOG=0`.
-- **Raw stream**: `~/logs/mcptask_runner/<slug>.log`.
+- **Raw stream**: `~/logs/mcptask_runner/<slug>/YYYY-MM-DD.log` — daily-rotated, piped through `lib/mcptask_runner/log_filter.rb` which timestamps entry-start lines (e.g. `[Claude]`, `[EventStream]`) but leaves multi-line JSON bodies untouched.
 - **`/ci-runner`**: `~/.claude/logs/projects/<sha256-cwd>/ci-runner_<ts>.log`.
 
 ## Version Management

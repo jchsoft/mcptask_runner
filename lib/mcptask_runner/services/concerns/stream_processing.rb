@@ -263,7 +263,7 @@ module McptaskRunner
       # 200K pin (see config/mcptask_runner.yml), so we kill this attempt here.
       # Sets snapshot status to :error inside the detector (mirrors check_stall) so
       # finalize_streaming skips re-setting :finished, and the failure shows up in the
-      # mcptask.online web UI — not only in ~/logs/mcptask_runner/mcptask_runner.log.
+      # mcptask.online web UI — not only in ~/logs/mcptask_runner/<slug>/<date>.log.
       def check_for_tool_not_enabled(line)
         return if @state.tool_not_enabled
         return unless tool_not_enabled_error?(line)

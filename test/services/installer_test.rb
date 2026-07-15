@@ -176,7 +176,15 @@ class InstallerTest < Minitest::Test
 
   def test_launcher_script_redirects_output_to_log
     capture_io { build.call }
-    assert_match %r{exec >> ".*project-name\.log" 2>&1}, script_content
+    assert_match(%r{2>&1 \| ruby ".*mcptask-runner-log-filter\.rb" ".*logs" "project-name"}, script_content)
+  end
+
+  def test_installer_writes_executable_log_filter
+    capture_io { build.call }
+    filter_path = File.join(@helper_bin, 'mcptask-runner-log-filter.rb')
+    assert File.exist?(filter_path), 'log filter should be copied into helper bin dir'
+    assert File.executable?(filter_path), 'log filter should be executable'
+    assert_match 'module LogFilter', File.read(filter_path)
   end
 
   # --- macOS guard ---
