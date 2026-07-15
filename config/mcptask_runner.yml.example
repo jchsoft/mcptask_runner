@@ -72,6 +72,11 @@
 #
 # --- Bug destination: where auto-bug pieces should land on mcptask.online ---
 #
+# TYPE-1 ONLY: bugs the AI agent finds in THIS (the target) project. Runner
+# self-failures (type-2 — the runner process itself crashing) are reported
+# automatically and unconditionally into the fixed "Errors" Epic on mcptask.online
+# (account jchsoft) and are NOT configurable here.
+#
 # Routes runner-detected bug pieces into a dedicated Epic so they don't
 # pollute the regular task backlog. epic_relative_id is the numeric id of an
 # existing Epic piece in the same mcptask.online account (see CLAUDE.md →
