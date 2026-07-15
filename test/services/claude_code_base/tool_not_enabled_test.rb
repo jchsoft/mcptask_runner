@@ -55,7 +55,7 @@ class ClaudeCodeBaseToolNotEnabledTest < Minitest::Test
     assert_equal 'error', builder.status, 'snapshot status must be :error so finalize_streaming skips :finished override'
     refute_empty emitted, 'must emit at least one snapshot via EventStream'
     assert_equal 'error', emitted.last[:status]
-    assert_match(/MCP server disconnected/, emitted.last[:error_message])
+    assert_match(/MCP tool not enabled/, emitted.last[:error_message])
   end
 
   def test_check_for_tool_not_enabled_no_kill_when_pattern_absent
@@ -115,22 +115,56 @@ class ClaudeCodeBaseToolNotEnabledTest < Minitest::Test
     refute base.send(:tool_not_enabled_detected?)
   end
 
-  def test_handle_tool_not_enabled_returns_terminal_error_no_retry
+  # Under the restart cap, handle_tool_not_enabled signals a fresh-session retry (returns nil),
+  # mirroring handle_context_overflow — the SSE startup race / skipped-ToolSearch is transient and
+  # a fresh child re-establishes the MCP connection. It must NOT burn a normal retry slot.
+  def test_handle_tool_not_enabled_restarts_fresh_under_cap
     base = McptaskRunner::ClaudeCodeBase.new
+    base.instance_variable_set(:@accumulated_output, +'dead session output')
+    base.instance_variable_set(:@text_content, +'dead text')
+    retry_state = base.instance_variable_get(:@retry_state)
+    initial_count = retry_state.tool_not_enabled_restart_count
+
+    slept = false
+    base.stub(:sleep, ->(_secs) { slept = true }) do
+      result = base.send(:handle_tool_not_enabled, Time.now - 1800)
+      assert_nil result, 'under cap must return nil to signal a fresh-session retry'
+    end
+
+    assert slept, 'must wait briefly for the old SSE connection to release before refork'
+    assert_equal initial_count + 1, retry_state.tool_not_enabled_restart_count, 'must increment its own counter'
+    assert retry_state.fresh_restart, 'must request a fresh session (no --continue) so MCP reconnects'
+    assert_equal 0, retry_state.count, 'must NOT burn a normal retry slot'
+    assert_equal '', base.instance_variable_get(:@accumulated_output), 'must clear dead session output'
+    assert_equal '', base.instance_variable_get(:@text_content)
+  end
+
+  # After MAX_TOOL_NOT_ENABLED_RESTARTS fresh restarts, the tool still never loaded → terminal.
+  def test_handle_tool_not_enabled_terminal_after_cap
+    base = McptaskRunner::ClaudeCodeBase.new
+    retry_state = base.instance_variable_get(:@retry_state)
+    retry_state.tool_not_enabled_restart_count = McptaskRunner::Concerns::RetryHandling::MAX_TOOL_NOT_ENABLED_RESTARTS
+
     result = base.send(:handle_tool_not_enabled, Time.now - 1800)
 
     assert_equal 'error', result['status']
     assert_equal 'tool_not_enabled', result['reason']
     assert_match(/MCP tool not enabled/, result['message'])
+    assert_match(/fresh restarts exhausted/, result['message'])
     assert_match(/cannot recover/, result['message'])
-    assert_equal 0, base.instance_variable_get(:@retry_state).count,
-                 'Must NOT increment retry counter — MCP server cannot reattach mid-session'
+    assert_equal McptaskRunner::Concerns::RetryHandling::MAX_TOOL_NOT_ENABLED_RESTARTS,
+                 retry_state.tool_not_enabled_restart_count,
+                 'must NOT increment past the cap once terminal'
   end
 
   def test_attempt_execution_emits_tool_not_enabled_terminal_error
     base = McptaskRunner::ClaudeCodeBase.new
     base.define_singleton_method(:model_name) { 'sonnet' }
     base.define_singleton_method(:build_instructions) { 'noop' }
+
+    # Cap already exhausted → terminal error, no fresh-restart signal.
+    base.instance_variable_get(:@retry_state).tool_not_enabled_restart_count =
+      McptaskRunner::Concerns::RetryHandling::MAX_TOOL_NOT_ENABLED_RESTARTS
 
     error_result = { 'status' => 'error', 'message' => 'No TASKRUNNER_RESULT found in output' }
     base.stub(:resolve_claude_path, '/fake/claude') do
@@ -143,6 +177,31 @@ class ClaudeCodeBaseToolNotEnabledTest < Minitest::Test
           result = base.send(:attempt_execution, Time.now)
           assert_equal 'error', result['status']
           assert_equal 'tool_not_enabled', result['reason']
+        end
+      end
+    end
+  end
+
+  # Under the cap, attempt_execution hits tool_not_enabled → handle_tool_not_enabled returns nil
+  # (fresh-restart signal) → attempt_execution returns nil so run_with_retry loops and reforks.
+  def test_attempt_execution_signals_fresh_restart_for_tool_not_enabled_under_cap
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'sonnet' }
+    base.define_singleton_method(:build_instructions) { 'noop' }
+
+    error_result = { 'status' => 'error', 'message' => 'No TASKRUNNER_RESULT found in output' }
+    base.stub(:resolve_claude_path, '/fake/claude') do
+      base.stub(:execute_with_streaming, '') do
+        base.stub(:parse_result, error_result) do
+          base.stub(:sleep, ->(_secs) { }) do
+            base.instance_variable_set(:@accumulated_output, +'')
+            base.instance_variable_get(:@state).tool_not_enabled = true
+            base.instance_variable_get(:@state).result_received = false
+
+            result = base.send(:attempt_execution, Time.now)
+            assert_nil result, 'under cap must signal fresh-restart (nil), not a terminal error'
+            assert base.instance_variable_get(:@retry_state).fresh_restart
+          end
         end
       end
     end

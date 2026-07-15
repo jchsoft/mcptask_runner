@@ -248,9 +248,14 @@ module McptaskRunner
         true
       end
 
-      # MCP server disconnected at Claude startup → tool reports "exists but is not enabled
-      # in this context". Marker retries would just re-emit the same failure and balloon
-      # context past the 200K pin (see config/mcptask_runner.yml). Treat as terminal.
+      # ReadMcpResourceTool reported "exists but is not enabled in this context". Two transient
+      # causes collapse to that marker: the mcptask-online SSE server was still `pending` at fork
+      # startup (SSE race, see config/skills/mcptask-read/SKILL.md), or the agent skipped the
+      # ToolSearch load step for the deferred tool. NOT a genuine server outage — production logs
+      # show ~70% of triage calls succeed against the same endpoint/token, so the server is up.
+      # handle_tool_not_enabled recovers with a fresh session (capped at MAX_TOOL_NOT_ENABLED_RESTARTS);
+      # a --continue marker retry would just re-emit the same failure and balloon context past the
+      # 200K pin (see config/mcptask_runner.yml), so we kill this attempt here.
       # Sets snapshot status to :error inside the detector (mirrors check_stall) so
       # finalize_streaming skips re-setting :finished, and the failure shows up in the
       # mcptask.online web UI — not only in ~/logs/mcptask_runner/mcptask_runner.log.
@@ -260,8 +265,8 @@ module McptaskRunner
 
         @state.tool_not_enabled = true
         @state.stopping = true
-        error_msg = 'MCP tool not enabled — MCP server disconnected (check .mcp.json + env tokens)'
-        Logger.error "[#{@log_tag}] Tool not enabled detected — #{error_msg}, session is dead, marking terminal"
+        error_msg = 'MCP tool not enabled — ReadMcpResourceTool not loaded (deferred tool / SSE startup race)'
+        Logger.error "[#{@log_tag}] Tool not enabled detected — #{error_msg}; will restart fresh if restarts remain"
         @snapshot_builder.set_status(:error, error_message: error_msg)
         EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)
         kill_process(@state.child_pid)

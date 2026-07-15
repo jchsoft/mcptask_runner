@@ -10,10 +10,21 @@ module McptaskRunner
       RETRY_WAIT_SECONDS = 30
       PRODUCTIVE_STREAM_THRESHOLD = 10 # stream events to consider a run "productive" (resets retry counter)
       MAX_OVERFLOW_RESTARTS = 1 # fresh-session restarts allowed on context overflow before terminal
+      # Fresh-session restarts allowed when ReadMcpResourceTool reports "exists but is not enabled
+      # in this context". Two root causes collapse to the same marker — (a) the mcptask-online SSE
+      # server was still `pending` at fork startup, (b) the agent skipped the ToolSearch load step
+      # for the deferred tool. Both are transient: a fresh child re-establishes the MCP connection
+      # and re-receives the "FIRST call ToolSearch" instruction. With a ~30% per-attempt failure
+      # rate observed in production logs, MAX_TOOL_NOT_ENABLED_RESTARTS=2 → 3 total attempts cuts
+      # the death rate to ~0.3^3 ≈ 2.7%. See handle_tool_not_enabled.
+      MAX_TOOL_NOT_ENABLED_RESTARTS = 2
+      TOOL_NOT_ENABLED_RESTART_WAIT = 5 # seconds to let the old SSE connection release before refork
 
-      RetryState = Struct.new(:count, :api_overload_count, :marker_retry_mode, :overflow_restart_count, :fresh_restart, keyword_init: true) do
+      RetryState = Struct.new(:count, :api_overload_count, :marker_retry_mode, :overflow_restart_count,
+                              :tool_not_enabled_restart_count, :fresh_restart, keyword_init: true) do
         def self.initial
-          new(count: 0, api_overload_count: 0, marker_retry_mode: false, overflow_restart_count: 0, fresh_restart: false)
+          new(count: 0, api_overload_count: 0, marker_retry_mode: false, overflow_restart_count: 0,
+              tool_not_enabled_restart_count: 0, fresh_restart: false)
         end
       end
 
@@ -23,6 +34,7 @@ module McptaskRunner
         loop do
           overload_before = @retry_state.api_overload_count
           overflow_before = @retry_state.overflow_restart_count
+          tool_not_enabled_before = @retry_state.tool_not_enabled_restart_count
           result = attempt_execution(start_time)
           return result if result
 
@@ -31,6 +43,9 @@ module McptaskRunner
 
           # Context-overflow fresh restart: own counter, must not burn a normal retry slot
           next if @retry_state.overflow_restart_count > overflow_before
+
+          # Tool-not-enabled fresh restart: own counter, same rationale as overflow (see below)
+          next if @retry_state.tool_not_enabled_restart_count > tool_not_enabled_before
 
           if @state.stream_line_count >= PRODUCTIVE_STREAM_THRESHOLD
             Logger.info_stdout "[#{@log_tag}] Claude was productive (#{@state.stream_line_count} stream events), resetting retry counter"
@@ -122,15 +137,38 @@ module McptaskRunner
         nil # Signal to retry with a fresh session
       end
 
-      # MCP server disconnected. Snapshot already emitted as :error by
-      # check_for_tool_not_enabled in stream_processing.rb (mirrors check_stall). Here we just
-      # log the terminal message and return the error result for the caller.
+      # ReadMcpResourceTool reported "exists but is not enabled in this context". Two transient
+      # causes collapse to that marker: (a) the mcptask-online SSE server was still `pending` at
+      # fork startup (documented SSE race in config/skills/mcptask-read/SKILL.md), or (b) the
+      # agent skipped the ToolSearch load step for the deferred tool. Both recover with a FRESH
+      # session — a new child re-establishes the MCP connection and re-receives the "FIRST call
+      # ToolSearch" instruction. This is NOT a mid-session server drop (the server/token are
+      # fine — production logs show ~70% of triage calls succeed against the same endpoint), so
+      # --continue would just re-emit the same failure; a fresh session is the correct recovery,
+      # mirroring handle_context_overflow. Capped at MAX_TOOL_NOT_ENABLED_RESTARTS.
+      #
+      # Snapshot already emitted as :error by check_for_tool_not_enabled in stream_processing.rb
+      # (mirrors check_stall); the retried attempt supersedes it.
       def handle_tool_not_enabled(start_time)
         elapsed_hours = ((Time.now - start_time) / 3600.0).round(2)
-        message = "MCP tool not enabled after #{elapsed_hours}h — MCP server disconnected " \
-                  '(check .mcp.json + env tokens), session cannot recover'
-        Logger.error "[#{@log_tag}] #{message}"
-        error_result(message).merge('reason' => 'tool_not_enabled')
+
+        if @retry_state.tool_not_enabled_restart_count >= MAX_TOOL_NOT_ENABLED_RESTARTS
+          message = "MCP tool not enabled after #{elapsed_hours}h — fresh restarts exhausted " \
+                    "(#{MAX_TOOL_NOT_ENABLED_RESTARTS}), ReadMcpResourceTool never loaded " \
+                    '(deferred tool / SSE startup race), session cannot recover'
+          Logger.error "[#{@log_tag}] #{message}"
+          return error_result(message).merge('reason' => 'tool_not_enabled')
+        end
+
+        @retry_state.tool_not_enabled_restart_count += 1
+        @retry_state.fresh_restart = true
+        @accumulated_output = ''.dup
+        @text_content = ''.dup
+        Logger.warn "[#{@log_tag}] MCP tool not enabled after #{elapsed_hours}h — restarting in a FRESH " \
+                     "session (no --continue) to re-establish the MCP connection / re-load the deferred tool " \
+                     "(restart #{@retry_state.tool_not_enabled_restart_count}/#{MAX_TOOL_NOT_ENABLED_RESTARTS})"
+        sleep(TOOL_NOT_ENABLED_RESTART_WAIT)
+        nil # Signal to retry with a fresh session
       end
 
       # Stall is terminal for this run but the mcptask piece stays in_progress.

@@ -34,6 +34,7 @@ detectors:
     max_constants: 7
     exclude:
       - McptaskRunner::Concerns::HeartbeatMonitoring # 8 named timeout/threshold constants, all meaningful
+      - McptaskRunner::Concerns::RetryHandling # 8 named retry/threshold constants (caps + waits), all meaningful
   TooManyMethods:
     max_methods: 35
   TooManyStatements:
