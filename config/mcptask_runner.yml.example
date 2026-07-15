@@ -29,7 +29,7 @@
 #   smart: 'minimax-m3:cloud'
 #   primitive: 'minimax-m3:cloud'
 #
-# --- Launcher: per-project launch command override ---
+# --- Launcher: per-project launch command + flag override ---
 #
 # `command:` REPLACES the leading `[claude]` of the spawned process. The runner
 # still appends its own flags afterwards:
@@ -40,6 +40,35 @@
 #
 # launcher:
 #   command: [ollama, launch, claude]
+#
+# `flags:` RE-DEFINES the flag names the runner appends, so you can drive a
+# non-claude coding CLI (Codex, Aider, Gemini CLI, OpenCode, …) that spells the
+# same parameter differently. Every key is optional — omitted keys keep the
+# claude default shown below. Set a key to null to omit that flag entirely
+# (for a tool that lacks it), or, for the value flags (prompt / model /
+# max_turns), to pass the value positionally with no flag (e.g. `codex "do X"`).
+#
+# launcher:
+#   command: [aider]
+#   flags:
+#     continue: "--continue"                          # resume the session
+#     prompt: "--message"                             # value flag: <flag> <instructions>
+#     model: "--model"                                # value flag: <flag> <model id>
+#     output_format: null                             # standalone token, or null to omit
+#     verbose: null
+#     max_turns: null                                 # value flag, or null to omit
+#     permission_mode: "--yes-always"                 # standalone token, or null to omit
+#     disallowed_tools: null                          # array of tokens, or null to omit
+#
+# Defaults (claude CLI) when `flags:` is omitted:
+#     continue: "--continue"
+#     prompt: "-p"
+#     model: "--model"
+#     output_format: "--output-format=stream-json"
+#     verbose: "--verbose"
+#     max_turns: "--max-turns"
+#     permission_mode: "--permission-mode=bypassPermissions"
+#     disallowed_tools: ["--disallowedTools", "EnterPlanMode,ExitPlanMode"]
 #
 # --- Bug destination: where auto-bug pieces should land on mcptask.online ---
 #
