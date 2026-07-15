@@ -123,4 +123,72 @@ class ClaudeCodeBaseCommandTest < Minitest::Test
     # env unset lets the CLI use its correct Anthropic defaults.
     assert_empty McptaskRunner::ClaudeCodeBase::FORK_MODEL_ENV
   end
+
+  # --- Configurable CLI launcher (task #11111): flags can be re-defined per host ---
+
+  def test_build_command_honors_renamed_value_flags
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'genius' }
+    aider_flags = McptaskRunner::Concerns::LauncherConfig::DEFAULT_FLAGS.merge(
+      'prompt' => '--message', 'model' => '--model'
+    )
+    base.stub(:launcher_flags, aider_flags) do
+      cmd = base.send(:build_command, ['aider'], 'do the thing', continue_session: false)
+
+      assert_equal 'aider', cmd[0]
+      assert_includes cmd, '--message'
+      refute_includes cmd, '-p', 'renamed prompt flag replaces the claude default'
+      # value follows its flag
+      assert_equal 'do the thing', cmd[cmd.index('--message') + 1]
+    end
+  end
+
+  def test_build_command_omits_null_flags
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'genius' }
+    trimmed = McptaskRunner::Concerns::LauncherConfig::DEFAULT_FLAGS.merge(
+      'output_format' => nil, 'verbose' => nil, 'disallowed_tools' => nil, 'permission_mode' => nil
+    )
+    base.stub(:launcher_flags, trimmed) do
+      cmd = base.send(:build_command, ['codex', 'exec'], 'do the thing', continue_session: false)
+
+      refute_includes cmd, '--output-format=stream-json'
+      refute_includes cmd, '--verbose'
+      refute_includes cmd, '--disallowedTools'
+      refute_includes cmd, '--permission-mode=bypassPermissions'
+      # the prompt still gets through (via its default flag)
+      assert_includes cmd, 'do the thing'
+    end
+  end
+
+  def test_build_command_passes_prompt_positionally_when_flag_null
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'genius' }
+    positional = McptaskRunner::Concerns::LauncherConfig::DEFAULT_FLAGS.merge('prompt' => nil)
+    base.stub(:launcher_flags, positional) do
+      cmd = base.send(:build_command, %w[codex exec], 'do the thing', continue_session: false)
+
+      refute_includes cmd, '-p', 'null prompt flag means no flag token'
+      assert_equal %w[codex exec], cmd[0, 2]
+      assert_equal 'do the thing', cmd[2], 'prompt passed as bare positional argument'
+    end
+  end
+
+  def test_build_command_defaults_match_claude_contract
+    # Guards the DEFAULT_FLAGS values against drift from the historical hard-coded flags.
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'genius' }
+    base.define_singleton_method(:max_turns) { 150 }
+
+    cmd = base.send(:build_command, ['/usr/bin/claude'], 'instr', continue_session: true)
+
+    assert_equal '--continue', cmd[1]
+    assert_includes cmd, '-p'
+    assert_includes cmd, '--output-format=stream-json'
+    assert_includes cmd, '--verbose'
+    assert_includes cmd, '--max-turns'
+    assert_includes cmd, '--permission-mode=bypassPermissions'
+    assert_includes cmd, '--disallowedTools'
+    assert_includes cmd, 'EnterPlanMode,ExitPlanMode'
+  end
 end

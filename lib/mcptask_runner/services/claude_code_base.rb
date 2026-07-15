@@ -109,20 +109,23 @@ module McptaskRunner
     # Optional per-host-project launcher override. When config/mcptask_runner.yml
     # carries a `launcher:` key with a `command:` array, it REPLACES the default
     # `[claude_path]` prefix — e.g. [ollama, launch, claude] to route through an
-    # alternate backend for testing. The runner still appends its own flags
-    # (-p, --model, --output-format=stream-json, …) and still derives --model from
-    # the model config, so the stream-json contract stays intact.
+    # alternate backend, or [codex, exec] / [aider] to drive a different CLI tool
+    # entirely. The runner appends its own flags afterwards; their names come from
+    # LauncherConfig::DEFAULT_FLAGS and can be re-defined under launcher.flags so a
+    # non-claude tool that spells the same parameter differently still works.
 
     # Reads the launch prefix from config/mcptask_runner.yml at class load time.
     # Defined BEFORE CLAUDE_COMMAND_PREFIX so the constant can call it.
     def self.load_launcher_prefix
-      require_relative 'concerns/mcptask_runner_config'
-      unified = Concerns::McptaskRunnerConfig.load
-      launcher = unified['launcher']
-      launcher['command'].freeze if launcher.is_a?(Hash) && launcher['command'].is_a?(Array)
+      require_relative 'concerns/launcher_config'
+      Concerns::LauncherConfig.command
     end
 
     CLAUDE_COMMAND_PREFIX = load_launcher_prefix
+
+    # Flag map (logical parameter => literal CLI token[s]) with per-host overrides
+    # merged over the claude defaults. Loaded once at class load, like the model IDs.
+    LAUNCHER_FLAGS = (require_relative 'concerns/launcher_config'; Concerns::LauncherConfig.flags)
 
     # One-line description of where model IDs came from, for the boot banner.
     def self.model_source_description
@@ -134,10 +137,15 @@ module McptaskRunner
 
     # One-line description of the launch command prefix, for the boot banner.
     def self.launcher_source_description
-      return 'Launcher: default (claude binary autodetect / CLAUDE_PATH)' unless CLAUDE_COMMAND_PREFIX
+      flags_note = Concerns::LauncherConfig.flags_overridden? ? " | flags overridden -> #{LAUNCHER_FLAGS.select { |k, _| DEFAULT_FLAGS_DIFFER.include?(k) }.map { |k, v| "#{k}=#{Array(v).join(' ')}" }.join(', ')}" : ''
+      return "Launcher: default (claude binary autodetect / CLAUDE_PATH)#{flags_note}" unless CLAUDE_COMMAND_PREFIX
 
-      "Launcher: override (config/mcptask_runner.yml) -> #{CLAUDE_COMMAND_PREFIX.join(' ')}"
+      "Launcher: override (config/mcptask_runner.yml) -> #{CLAUDE_COMMAND_PREFIX.join(' ')}#{flags_note}"
     end
+
+    # Keys whose resolved value differs from the claude default — computed once so the
+    # banner lists only the flags the host actually re-defined.
+    DEFAULT_FLAGS_DIFFER = LAUNCHER_FLAGS.reject { |k, v| Concerns::LauncherConfig::DEFAULT_FLAGS[k] == v }.keys.freeze
 
     # One-line description of where auto-bug pieces will be created, for the boot banner.
     # Mirrors model_source_description / launcher_source_description so the runner prints
@@ -318,16 +326,34 @@ module McptaskRunner
     end
 
     def build_command(base, instructions, continue_session: false)
+      flags = launcher_flags
       cmd = base
-      cmd << '--continue' if continue_session
-      cmd.concat(['-p', instructions, '--model', effective_model_name, '--output-format=stream-json', '--verbose'])
-      cmd.concat(['--max-turns', max_turns.to_s]) if max_turns
-      cmd << '--permission-mode=bypassPermissions' if accept_edits?
+      cmd << flags['continue'] if continue_session && flags['continue']
+      append_value_flag(cmd, flags['prompt'], instructions)
+      append_value_flag(cmd, flags['model'], effective_model_name)
+      cmd << flags['output_format'] if flags['output_format']
+      cmd << flags['verbose'] if flags['verbose']
+      append_value_flag(cmd, flags['max_turns'], max_turns.to_s) if max_turns
+      cmd << flags['permission_mode'] if accept_edits? && flags['permission_mode']
       # Plan mode waits for interactive approval that never comes in a headless child — the run
       # hangs until the hung-tool killer fires. Strip the tools so the child can't enter it.
-      cmd.concat(%w[--disallowedTools EnterPlanMode,ExitPlanMode])
+      cmd.concat(Array(flags['disallowed_tools'])) if flags['disallowed_tools']
       Logger.debug "command: #{cmd.map { |arg| Shellwords.escape(arg) }.join(' ')}"
       cmd
+    end
+
+    # The resolved flag map (host overrides merged over claude defaults), loaded once
+    # at class load. A method so subclasses/tests can substitute a different map.
+    def launcher_flags
+      LAUNCHER_FLAGS
+    end
+
+    # Emit a value-carrying flag. A configured flag token precedes the value
+    # (`--model opus`); a nil flag passes the value positionally (`codex "do X"`)
+    # for tools that take it as a bare argument.
+    def append_value_flag(cmd, flag, value)
+      cmd << flag if flag
+      cmd << value
     end
 
     def accept_edits?
