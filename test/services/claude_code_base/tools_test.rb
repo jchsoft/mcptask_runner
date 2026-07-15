@@ -212,6 +212,32 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
     assert_equal 0, builder.active_tool_count
   end
 
+  def test_track_system_task_event_propagates_summary_to_message_and_recent_actions
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.tool_started(tool_id: 'tool_abc', name: 'Task', summary: 'run the suite')
+
+    line = '{"type":"system","subtype":"task_notification","tool_use_id":"tool_abc",' \
+           '"status":"completed","summary":"Get all test failures"}'
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_system_task_event, line) }
+
+    assert_equal 'Get all test failures', builder.to_h[:message]
+    assert_equal ['Task: Get all test failures'], builder.recent_actions
+  end
+
+  def test_track_system_task_event_keeps_start_summary_when_notification_summary_blank
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.tool_started(tool_id: 'tool_abc', name: 'Skill', summary: 'ci-wait')
+
+    line = '{"type":"system","subtype":"task_notification","tool_use_id":"tool_abc",' \
+           '"status":"completed","summary":""}'
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_system_task_event, line) }
+
+    assert_nil builder.to_h[:message]
+    assert_equal ['Skill: ci-wait'], builder.recent_actions
+  end
+
   def test_track_system_task_event_ignores_non_task_notification
     base = McptaskRunner::ClaudeCodeBase.new
     builder = base.instance_variable_get(:@snapshot_builder)

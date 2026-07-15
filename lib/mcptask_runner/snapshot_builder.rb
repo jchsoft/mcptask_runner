@@ -161,10 +161,15 @@ module McptaskRunner
       end
     end
 
-    def tool_finished(tool_id:)
+    # summary overrides the stored tool_started summary for the recent-actions trail. A
+    # forked-execution tool (background Task, Skill) finishes via a task_notification that
+    # carries the SDK's own summary of what it did ("Get all test failures") — richer than
+    # the input-derived summary captured at start time, so prefer it when present.
+    def tool_finished(tool_id:, summary: nil)
       @mutex.synchronize do
         if (action = @active_actions[tool_id])
-          @recent_actions << "#{action[:name]}: #{action[:summary]}"
+          label = summary.to_s.strip.empty? ? action[:summary] : summary.to_s.strip
+          @recent_actions << "#{action[:name]}: #{label}"
           @recent_actions.shift if @recent_actions.size > RECENT_ACTIONS_CAP
         end
         @active_actions.delete(tool_id)

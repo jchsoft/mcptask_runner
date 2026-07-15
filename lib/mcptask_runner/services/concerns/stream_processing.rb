@@ -39,7 +39,12 @@ module McptaskRunner
 
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         duration = (now - action[:mono_started_at]).round(1)
-        @snapshot_builder.tool_finished(tool_id: tool_use_id)
+        summary = parsed['summary'].to_s.strip
+        @snapshot_builder.tool_finished(tool_id: tool_use_id, summary: summary)
+        # The SDK's own summary of what the forked tool did is the freshest signal for the
+        # web card — show it as the current message so a completed background Task/Skill
+        # isn't left blank on the dashboard once it drops out of active_actions.
+        @snapshot_builder.set_message(summary) unless summary.empty?
         EventStream.emit_snapshot(@snapshot_builder.to_h)
         Logger.debug "[#{@log_tag}] [tool_tracking] Tool finished via task_notification: " \
                      "#{action[:name]} after #{duration}s (status=#{parsed['status']})"
