@@ -276,8 +276,13 @@ module McptaskRunner
         end
       end
 
+      # .mcp.json points at the MCP endpoint, the stream needs ActionCable. Both spellings map to
+      # /cable: the legacy SSE form (https://host/mcp/sse) and the streamable-HTTP form
+      # (https://host/mcp). Handling only the first one left newer projects dialling the MCP
+      # endpoint, which answers 200 text/event-stream instead of 101 — surfaced as
+      # "[EventStream] WebSocket error: invalid_status_code — disabling stream".
       def cable_url_from_mcp_json
-        mcp_server_url&.sub(%r{\Ahttps://}, "wss://")&.sub(%r{/mcp/sse\z}, "/cable").to_s
+        mcp_server_url&.sub(%r{\Ahttps://}, "wss://")&.sub(%r{/mcp(/sse)?/?\z}, "/cable").to_s
       end
 
       def mcp_server_url

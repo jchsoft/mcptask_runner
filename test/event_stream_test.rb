@@ -73,6 +73,27 @@ class EventStreamTest < Minitest::Test
     end
   end
 
+  # Streamable-HTTP .mcp.json entries drop the /sse suffix; the rewrite used to miss them and the
+  # client dialled the MCP endpoint, which answers 200 text/event-stream → invalid_status_code.
+  def test_auto_resolves_url_from_streamable_mcp_json
+    ["https://mcptask.online/mcp", "https://mcptask.online/mcp/"].each do |url|
+      fake_mcp = {
+        "mcpServers" => {
+          "mcptask-online" => {
+            "url" => url,
+            "headers" => { "Authorization" => "Bearer ${MCPTASK_TOKEN}" }
+          }
+        }
+      }
+      McptaskRunner::EventStream.instance_variable_set(:@mcp_json, fake_mcp)
+      with_env("MCPT_RUNNER_CABLE_URL" => nil, "MCPTASK_TOKEN" => "abc") do
+        assert_equal "wss://mcptask.online/cable",
+                     McptaskRunner::EventStream.send(:resolved_cable_url),
+                     "expected #{url} to resolve to the ActionCable endpoint"
+      end
+    end
+  end
+
   def test_resolved_token_uses_literal_when_no_env_interpolation
     fake_mcp = {
       "mcpServers" => {
