@@ -1,9 +1,24 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "tmpdir"
+require "fileutils"
 
 class EventStreamTest < Minitest::Test
   def setup
+    # test_helper arms the #10465 hard kill switch so a leaked token can never open a real socket,
+    # but that makes enabled? answer false unconditionally — which is exactly what this file
+    # exercises. Lift it here (every case below injects a FakeWs, so there is no real I/O) and put
+    # it back in teardown, the same way TimeStatusClientTest does.
+    @prev_disable = ENV.delete(McptaskRunner::EventStream::DISABLE_ENV)
+    # resolved_token honours the env var named in the cwd's .mcp.json Authorization header and only
+    # falls back to MCPTASK_TOKEN when there is no .mcp.json. Run from an empty dir so the cases
+    # below depend on the token they set, not on this host's real .mcp.json (which interpolates
+    # ${WORKVECTOR_KAMR_TOKEN} and left enabled? false no matter what the test exported).
+    @orig_dir = Dir.pwd
+    @tmpdir = Dir.mktmpdir
+    Dir.chdir(@tmpdir)
+
     McptaskRunner::EventStream.instance_variable_set(:@ws, nil)
     McptaskRunner::EventStream.instance_variable_set(:@subscribed, false)
     McptaskRunner::EventStream.instance_variable_set(:@mcp_json, nil)
@@ -15,6 +30,12 @@ class EventStreamTest < Minitest::Test
     McptaskRunner::EventStream.instance_variable_set(:@last_emitted_status, nil)
     McptaskRunner::EventStream.instance_variable_set(:@mutex, Mutex.new)
     McptaskRunner::EventStream.instance_variable_set(:@subscribed_cv, ConditionVariable.new)
+  end
+
+  def teardown
+    Dir.chdir(@orig_dir)
+    FileUtils.rm_rf(@tmpdir)
+    ENV[McptaskRunner::EventStream::DISABLE_ENV] = @prev_disable if @prev_disable
   end
 
   def test_disabled_when_cable_url_not_set

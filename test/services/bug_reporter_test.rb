@@ -71,7 +71,7 @@ class BugReporterTest < Minitest::Test
 
       $stdin = StringIO.new("Runner crashes on startup\nSomething is broken\n\n")
 
-      create_resp = json_response(201, { 'piece' => { 'relative_id' => 777 } })
+      create_resp = json_response(201, { 'relative_id' => 777 })
 
       McptaskRunner::Logger.stub(:latest_run_log, nil) do
         with_stubbed_http([create_resp]) do
@@ -93,20 +93,26 @@ class BugReporterTest < Minitest::Test
       FileUtils.mkdir_p(File.join(@tmpdir, 'log'))
       File.write(log_path, 'log content here')
 
-      create_resp = json_response(201, { 'piece' => { 'relative_id' => 42 } })
+      create_resp = json_response(201, { 'relative_id' => 42 })
       attach_resp = json_response(200, { 'success' => true })
 
-      captured_bodies = []
+      captured_requests = []
       McptaskRunner::Logger.stub(:latest_run_log, log_path) do
-        with_capturing_http([create_resp, attach_resp], captured_bodies) do
+        with_capturing_http([create_resp, attach_resp], captured_requests) do
           assert_output(/Attaching run log/) { Klass.call }
         end
       end
 
-      attach_body = JSON.parse(captured_bodies[1])
-      assert_equal 'mcptask_runner_20260601_080000.log', attach_body.dig('attachment', 'file_name')
-      decoded = Base64.decode64(attach_body.dig('attachment', 'file_content'))
-      assert_equal 'log content here', decoded
+      # Api::AttachmentsController#create reads params[:file].tempfile — so this has to leave as a
+      # multipart upload, not JSON+base64. Net::HTTP encodes multipart at send time, so the request
+      # object still carries the form data rather than a body; the exact wire bytes are asserted in
+      # McptaskPieceRestTest against a real socket.
+      attach_request = captured_requests[1]
+      assert_match %r{\Amultipart/form-data}, attach_request['Content-Type']
+      field, io, opts = attach_request.instance_variable_get(:@body_data).first
+      assert_equal 'file', field
+      assert_equal 'mcptask_runner_20260601_080000.log', opts[:filename]
+      assert_equal 'log content here', io.read
     end
   end
 
@@ -118,7 +124,7 @@ class BugReporterTest < Minitest::Test
 
       $stdin = StringIO.new("Title\nDesc\n\n")
 
-      responses = [json_response(201, { 'piece' => { 'relative_id' => 5 } })]
+      responses = [json_response(201, { 'relative_id' => 5 })]
 
       McptaskRunner::Logger.stub(:latest_run_log, nil) do
         with_stubbed_http(responses) do
@@ -162,7 +168,7 @@ class BugReporterTest < Minitest::Test
       mcp_json_path = File.join(@tmpdir, '.mcp.json')
       File.write(mcp_json_path, '{"mcpServers": {}}')
 
-      create_resp = json_response(201, { 'piece' => { 'relative_id' => 10 } })
+      create_resp = json_response(201, { 'relative_id' => 10 })
       attach_resp = json_response(200, { 'success' => true })
 
       McptaskRunner::Logger.stub(:latest_run_log, nil) do
@@ -184,17 +190,17 @@ class BugReporterTest < Minitest::Test
 
       $stdin = StringIO.new("Title\nDesc\n\n")
 
-      create_resp = json_response(201, { 'piece' => { 'relative_id' => 100 } })
+      create_resp = json_response(201, { 'relative_id' => 100 })
 
-      captured_bodies = []
+      captured_requests = []
       McptaskRunner::Logger.stub(:latest_run_log, nil) do
-        with_capturing_http([create_resp], captured_bodies) do
+        with_capturing_http([create_resp], captured_requests) do
           capture_io { Klass.call }
         end
       end
 
-      create_body = JSON.parse(captured_bodies[0])
-      refute create_body.dig('piece', 'parent_id'), 'parent_id must be absent when no destination is configured'
+      create_body = JSON.parse(captured_requests[0].body)
+      refute create_body['parent_id'], 'parent_id must be absent when no destination is configured'
     end
   end
 
@@ -209,17 +215,17 @@ class BugReporterTest < Minitest::Test
 
       $stdin = StringIO.new("Title\nDesc\n\n")
 
-      create_resp = json_response(201, { 'piece' => { 'relative_id' => 101 } })
+      create_resp = json_response(201, { 'relative_id' => 101 })
 
-      captured_bodies = []
+      captured_requests = []
       McptaskRunner::Logger.stub(:latest_run_log, nil) do
-        with_capturing_http([create_resp], captured_bodies) do
+        with_capturing_http([create_resp], captured_requests) do
           capture_io { Klass.call }
         end
       end
 
-      create_body = JSON.parse(captured_bodies[0])
-      assert_equal 99_999, create_body.dig('piece', 'parent_id')
+      create_body = JSON.parse(captured_requests[0].body)
+      assert_equal 99_999, create_body['parent_id']
     end
   end
 
@@ -234,17 +240,17 @@ class BugReporterTest < Minitest::Test
 
       $stdin = StringIO.new("Title\nDesc\n\n")
 
-      create_resp = json_response(201, { 'piece' => { 'relative_id' => 102 } })
+      create_resp = json_response(201, { 'relative_id' => 102 })
 
-      captured_bodies = []
+      captured_requests = []
       McptaskRunner::Logger.stub(:latest_run_log, nil) do
-        with_capturing_http([create_resp], captured_bodies) do
+        with_capturing_http([create_resp], captured_requests) do
           capture_io { Klass.call }
         end
       end
 
-      create_body = JSON.parse(captured_bodies[0])
-      assert_equal 88_888, create_body.dig('piece', 'parent_id'), 'env var must override config file'
+      create_body = JSON.parse(captured_requests[0].body)
+      assert_equal 88_888, create_body['parent_id'], 'env var must override config file'
     end
   end
 
@@ -259,17 +265,17 @@ class BugReporterTest < Minitest::Test
 
       $stdin = StringIO.new("Title\nDesc\n\n")
 
-      create_resp = json_response(201, { 'piece' => { 'relative_id' => 103 } })
+      create_resp = json_response(201, { 'relative_id' => 103 })
 
-      captured_bodies = []
+      captured_requests = []
       McptaskRunner::Logger.stub(:latest_run_log, nil) do
-        with_capturing_http([create_resp], captured_bodies) do
+        with_capturing_http([create_resp], captured_requests) do
           capture_io { Klass.call }
         end
       end
 
-      create_body = JSON.parse(captured_bodies[0])
-      assert_equal 12_345, create_body.dig('piece', 'parent_id')
+      create_body = JSON.parse(captured_requests[0].body)
+      assert_equal 12_345, create_body['parent_id']
     end
   end
 
@@ -308,11 +314,11 @@ class BugReporterTest < Minitest::Test
     end
   end
 
-  def with_capturing_http(responses, bodies_out)
+  def with_capturing_http(responses, requests_out)
     call_count = 0
     fake_http = Object.new
     fake_http.define_singleton_method(:request) do |req|
-      bodies_out << req.body
+      requests_out << req
       resp = responses[call_count] || responses.last
       call_count += 1
       resp

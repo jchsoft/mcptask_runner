@@ -2,6 +2,8 @@
 
 require 'test_helper'
 require 'net/http'
+require 'tmpdir'
+require 'fileutils'
 
 class TimeStatusClientTest < Minitest::Test
   Klass = McptaskRunner::TimeStatusClient
@@ -13,9 +15,19 @@ class TimeStatusClientTest < Minitest::Test
     # The test_helper kill switch (#10465) blocks real HTTP; lift it for this file
     # because these tests stub Net::HTTP and only exercise parsing/error paths.
     @prev_disable = ENV.delete(McptaskRunner::EventStream::DISABLE_ENV)
+    # TimeStatusClient#token_env_name reads the Authorization header out of the cwd's .mcp.json and
+    # only falls back to MCPTASK_TOKEN when there is none. Run from an empty dir so these cases
+    # depend on the env var they set rather than on whatever token name this host's real .mcp.json
+    # happens to interpolate (on a dev machine it is ${WORKVECTOR_KAMR_TOKEN}, and every case here
+    # then failed with "MCPTASK token env var not set").
+    @orig_dir = Dir.pwd
+    @tmpdir = Dir.mktmpdir
+    Dir.chdir(@tmpdir)
   end
 
   def teardown
+    Dir.chdir(@orig_dir)
+    FileUtils.rm_rf(@tmpdir)
     ENV['MCPTASK_TOKEN'] = @prev_token if @prev_token
     ENV['MCPTASK_BASE_URL'] = @prev_base if @prev_base
     ENV['MCPTASK_ACCOUNT'] = @prev_account if @prev_account

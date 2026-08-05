@@ -41,15 +41,19 @@ module McptaskRunner
             INSTRUCTION
           end
 
-          # One-time preamble establishing the general rule: any tool the prompt tells the agent to
-          # use but which is absent from its active tool list is DEFERRED (schema not loaded yet),
-          # NOT missing and NOT a failure. Stated generically so it covers every deferred tool — MCP
-          # tools especially — not just ReadMcpResourceTool. Without this a triage child that merely
-          # NOTICES ReadMcpResourceTool is absent gives up and emits status "error" (the prompt's
-          # "On MCP failure: STOP" reads a deferred tool as an outage), killing the whole work loop.
-          def deferred_tools_note
+          # One-time preamble telling the agent how to reach a tool these instructions name, whichever
+          # way the host harness exposes it. Tool deferral is HOST-DEPENDENT: with tool search on, MCP
+          # tools are absent until ToolSearch loads them; with it off (non-Anthropic models behind an
+          # ANTHROPIC_BASE_URL proxy — see LauncherConfig) there is no ToolSearch and every MCP tool
+          # sits in the active list already. So the rule leads with "look in your tool list and call
+          # it", and only falls back to ToolSearch. An earlier version asserted unconditionally that
+          # every MCP tool IS deferred; on ollama hosts that is false, and a triage child obeying it
+          # hunted for a ToolSearch that does not exist and emitted status "error" — the very failure
+          # the preamble exists to prevent. Whichever branch applies, "tool isn't available" is never
+          # a reason to fail: the prompt's "On MCP failure: STOP" must not read as an outage.
+          def tool_availability_note
             <<~NOTE.strip
-              DEFERRED TOOLS: every MCP tool (e.g. ReadMcpResourceTool) is DEFERRED — its schema is not loaded, so it is ABSENT from your active tool list until you load it. A tool these instructions tell you to use but you do not see is DEFERRED, NOT missing and NOT an MCP failure. Load it FIRST with ToolSearch query "select:<ToolName>" (e.g. "select:ReadMcpResourceTool"), THEN call it. NEVER emit an error/failure status because a tool "isn't available" — ToolSearch it first.
+              TOOL AVAILABILITY: when these instructions name a tool (e.g. ReadMcpResourceTool), FIRST look for it in your active tool list — if it is there, CALL IT DIRECTLY. Only if it is absent is it DEFERRED (schema not loaded yet), which is NOT missing and NOT an MCP failure: load it with ToolSearch query "select:<ToolName>" (e.g. "select:ReadMcpResourceTool"), THEN call it. If you have no ToolSearch tool, this host does not defer tools at all — re-read your tool list and call the named tool directly. NEVER substitute Bash for a tool you cannot find, and NEVER emit an error/failure status because a tool "isn't available".
             NOTE
           end
 
