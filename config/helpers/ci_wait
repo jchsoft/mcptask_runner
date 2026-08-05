@@ -114,9 +114,31 @@ while true; do
   fi
 
   if [ "$(date +%s)" -ge "$deadline" ]; then
-    last=$(tail -1 "$log" 2>/dev/null | tr -d '\n' | cut -c1-120)
+    # Last NON-EMPTY line — a trailing blank line must not make LAST look empty
+    # (that spurious "LAST= is empty" is what sent the caller poking by hand).
+    last=$(grep -v '^[[:space:]]*$' "$log" 2>/dev/null | tail -1 | tr -d '\n' | cut -c1-120)
     echo "NOT_FINISHED"
     echo "LAST=${last:-}"
+    # If the log genuinely produced nothing, say WHY so the caller doesn't have
+    # to inspect the file and process itself: is CI silently alive or dead?
+    if [ -z "$last" ]; then
+      bytes=$(wc -c < "$log" 2>/dev/null | tr -d ' ')
+      now=$(date +%s)
+      mtime=$(stat -f %m "$log" 2>/dev/null || stat -c %Y "$log" 2>/dev/null)
+      echo "DIAG=empty_log bytes=${bytes:-0} last_write_age=$(( now - ${mtime:-now} ))s"
+      if [ -f "$lock" ]; then
+        cmd_pid=$(grep '^COMMAND_PID=' "$lock" 2>/dev/null | cut -d= -f2)
+        if [ -z "${cmd_pid:-}" ]; then
+          echo "PROC=no_command_pid_in_lock"
+        elif kill -0 "$cmd_pid" 2>/dev/null; then
+          echo "PROC=alive pid=${cmd_pid} (CI running but silent — likely long asset/setup step; keep waiting)"
+        else
+          echo "PROC=dead pid=${cmd_pid} (process gone with no output — CI never started or crashed early)"
+        fi
+      else
+        echo "PROC=no_lockfile (run finished or never acquired lock — check ci_start output)"
+      fi
+    fi
     exit 0
   fi
 

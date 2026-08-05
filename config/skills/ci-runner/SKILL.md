@@ -46,6 +46,12 @@ while outer_iterations < 10:
       waits += 1
       w = Skill(ci-wait, args="self <CI_LOG>")
       if w starts with "NOT_FINISHED":
+        # A NOT_FINISHED with an empty LAST= now carries a DIAG=/PROC= line.
+        # PROC=dead means CI crashed producing no output — don't spin the full
+        # cap; report the diagnostic and STOP. PROC=alive means it's just
+        # silent (long asset/setup step) — keep waiting.
+        if w contains "PROC=dead":
+          report "CI process died with no output. Log at CI_LOG. Diagnostic: <the DIAG=/PROC= lines>. Run ~/.claude/bin/test_lock kill to clean up." , STOP
         continue
       if w starts with "FINISHED_SELF":
         parse the ---BEGIN_LOG_TAIL---...---END_LOG_TAIL--- block and EXIT_CODE

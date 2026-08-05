@@ -40,6 +40,17 @@ NOT_FINISHED
 LAST=<last non-empty log line>
 ```
 
+When `LAST=` is empty (log produced nothing), two diagnostic lines follow so the
+caller knows whether CI is silently alive or dead — no need to inspect the
+process/log by hand:
+
+```
+NOT_FINISHED
+LAST=
+DIAG=empty_log bytes=<n> last_write_age=<s>s
+PROC=alive pid=<n> (…)   |   PROC=dead pid=<n> (…)   |   PROC=no_lockfile (…)
+```
+
 ```
 FINISHED_SELF
 EXIT_CODE=0
