@@ -1,9 +1,9 @@
 ---
 name: mcptask-read
-description: "Read mcptask.online pieces and return a COMPACT summary instead of raw MCP JSON. ALWAYS prefer this skill over calling ReadMcpResourceTool directly for any `mcptask://` URI — raw piece payloads can be 2-10KB each and accumulate fast in the parent session. Use when the user says 'load task #N', 'load piece #N', 'story #N', 'next task', 'piece details', 'list pieces', 'download attachment', 'who am I', references an mcptask.online piece by ID, or any time you would otherwise read from the `mcptask-online` MCP server. Skill runs in a forked Haiku context — raw JSON never reaches the parent."
+description: "Read mcptask.online pieces and return a COMPACT summary instead of raw MCP JSON. ALWAYS prefer this skill over calling the `mcp__mcptask-online__Get*`/`List*` read tools directly — raw piece payloads can be 2-10KB each and accumulate fast in the parent session. Use when the user says 'load task #N', 'load piece #N', 'story #N', 'next task', 'piece details', 'list pieces', 'download attachment', 'who am I', references an mcptask.online piece by ID, or any time you would otherwise read from the `mcptask-online` MCP server. Skill runs in a forked Haiku context — raw JSON never reaches the parent."
 context: fork
 model: haiku
-allowed-tools: ReadMcpResourceTool, Bash, ToolSearch, Read
+allowed-tools: mcp__mcptask-online__GetPieceTool, mcp__mcptask-online__GetNextTaskTool, mcp__mcptask-online__GetCurrentUserTool, mcp__mcptask-online__ListPiecesTool, mcp__mcptask-online__GetPieceEffortsTool, mcp__mcptask-online__GetAttachmentTool, mcp__mcptask-online__GetProjectTool, mcp__mcptask-online__GetProjectTreeTool, mcp__mcptask-online__ListProjectsTool, mcp__mcptask-online__GetUsageGuideTool, ToolSearch, Bash, Read
 ---
 
 # mcptask.online Read Skill
@@ -12,15 +12,16 @@ Fetch piece/user data from the `mcptask-online` MCP server and return a compact 
 
 ## ⛔ HARD RULES — read first
 
-1. **You ARE the forked Haiku context. You DO have MCP access.** Never return "I'm an agent without MCP access" — that is wrong. Either `ReadMcpResourceTool` succeeds (possibly after retries), or you return the structured error block at the bottom.
-2. **NEVER use Bash, curl, wget, Net::HTTP, or any HTTP client to fetch piece, user, or list data.** The mcptask.online HTTPS API path `/api/{account}/pieces/{id}` expects the internal `id` (NOT `relative_id`) — improvising HTTP returns the WRONG piece. All reads go through `ReadMcpResourceTool` only. (The one exception is the attachment *download* command you hand back to the parent, which uses `/attachments/{id}/download` with `relative_id` — see "Attachment download".)
-3. **Follow the steps in order. Do not skip Step 1.**
+1. **You ARE the forked Haiku context. You DO have MCP access.** Never return "I'm an agent without MCP access" — that is wrong. Either a read tool succeeds (possibly after retries), or you return the structured error block at the bottom.
+2. **Read through the `mcp__mcptask-online__*` tools, never through `ReadMcpResourceTool`.** The built-in MCP *resource* reader is not available inside forked subagents — only MCP *tools* propagate. Reads that go through resources work in the parent and silently fail here.
+3. **NEVER use Bash, curl, wget, Net::HTTP, or any HTTP client to fetch piece, user, or list data.** The mcptask.online HTTPS API path `/api/{account}/pieces/{id}` expects the internal `id` (NOT `relative_id`) — improvising HTTP returns the WRONG piece. (The one exception is the attachment *download* command you hand back to the parent — see "Attachment download".)
+4. **Follow the steps in order. Do not skip Step 1.**
 
 ## Why this skill exists
 
 The `mcptask-online` MCP server returns rich JSON: a single piece response can be 2-10KB, a list endpoint can be 50KB+. Each call accumulates in the parent context. The companion `mcptask-write` skill stays in the parent because IDs from write results are needed for next steps, but reads are pure data fetching — they belong in a fork that summarizes before returning.
 
-If you find yourself about to call `ReadMcpResourceTool` against an `mcptask://` URI in the parent, stop and call this skill instead.
+If you find yourself about to call a `mcp__mcptask-online__Get*` tool in the parent, stop and call this skill instead.
 
 ## Input
 
@@ -46,42 +47,48 @@ Default `account_code`: `jchsoft` unless the project's `CLAUDE.md` overrides it.
 
 ## Server label
 
-MCP server key in `.mcp.json` is `mcptask-online`. Tool names use prefix `mcp__mcptask-online__*`. Everything is a piece — the URI never uses `/tasks/` or `/stories/`.
+MCP server key in `.mcp.json` is `mcptask-online`, reached over Streamable HTTP (`https://mcptask.online/mcp`). Tool names use prefix `mcp__mcptask-online__*`. Everything is a piece — there is no separate task/story endpoint.
 
-## URI patterns
+> The server hides these read tools from legacy SSE clients (`config/initializers/fast_mcp.rb` → `StreamableOnlyToolsFilter` in projectoid_ii). If `.mcp.json` for this project still says `"type": "sse"`, the tools below will not exist — fix the transport, don't fall back to HTTP scraping.
 
-| URI | Purpose |
-|-----|---------|
-| `mcptask://pieces/{account_code}/{piece_id}` | Piece details + attachments + subtasks |
-| `mcptask://pieces/{account_code}/@next?project_relative_id={id}` | Next most urgent task |
-| `mcptask://pieces/{account_code}?page={page}&size={size}` | Paginated list of pieces |
-| `mcptask://pieces/{account_code}/{piece_id}/efforts` | Effort history (read-only) |
-| `mcptask://user` | Current user info + working hours |
-| `mcptask://projects/{account_code}` | List of projects |
-| `mcptask://how_to_use` | Quick-start guide |
-| `mcptask://resource-templates` | All templated resources |
+## Tool map
 
-## Step 1: Load the tool schema if needed
+| Tool | Args | Purpose |
+|------|------|---------|
+| `mcp__mcptask-online__GetPieceTool` | `account_code*`, `piece_id*` | Piece details + attachments + subtasks |
+| `mcp__mcptask-online__GetNextTaskTool` | `account_code*`, `project_relative_id` | Next most urgent task |
+| `mcp__mcptask-online__ListPiecesTool` | `account_code*`, `page`, `size` | Paginated list of doable pieces |
+| `mcp__mcptask-online__GetPieceEffortsTool` | `account_code*`, `piece_id*` | Effort history (last 50) |
+| `mcp__mcptask-online__GetAttachmentTool` | `account_code*`, `piece_id*`, `attachment_id*` | Attachment metadata + direct download URL |
+| `mcp__mcptask-online__GetCurrentUserTool` | — | Current user info + working hours |
+| `mcp__mcptask-online__GetProjectTool` | `account_code*`, project ref | Project details |
+| `mcp__mcptask-online__GetProjectTreeTool` | `account_code*`, project ref | Project piece tree |
+| `mcp__mcptask-online__ListProjectsTool` | `account_code*` | List of projects |
+| `mcp__mcptask-online__GetUsageGuideTool` | — | Quick-start guide |
 
-```
-ToolSearch(query: "select:ReadMcpResourceTool", max_results: 1)
-```
+`piece_id` is always the **`relative_id`**, never the internal `id`.
 
-`ReadMcpResourceTool` is a deferred tool — load it before first use.
-
-## Step 2: Fetch via MCP (with retry for SSE race)
+## Step 1: Load the tool schema
 
 ```
-ReadMcpResourceTool(server: "mcptask-online", uri: "<URI from the table>")
+ToolSearch(query: "select:mcp__mcptask-online__GetPieceTool", max_results: 1)
 ```
 
-**SSE race condition**: the `mcptask-online` MCP server uses SSE and may still be in `pending` state at fork startup. The first `ReadMcpResourceTool` call can fail with messages like "exists but is not enabled in this context" or "server not connected".
+The `mcp__mcptask-online__*` tools are deferred — load the one you need (comma-separate several in one `select:`) before first use. Skipping this step is the #1 cause of this skill reporting a false "tool does not exist".
+
+## Step 2: Fetch via the tool (with retry for connection race)
+
+```
+mcp__mcptask-online__GetPieceTool(account_code: "jchsoft", piece_id: 10464)
+```
+
+**Connection race**: the server may still be in `pending` state at fork startup. The first call can fail with messages like "exists but is not enabled in this context" or "server not connected".
 
 If the first call fails, do NOT give up and do NOT hallucinate. Retry up to 3 times with a short sleep between attempts:
 
 ```
-Bash(command: "sleep 3", description: "Wait for mcptask-online SSE to connect")
-ReadMcpResourceTool(server: "mcptask-online", uri: "<same URI>")
+Bash(command: "sleep 3", description: "Wait for mcptask-online to connect")
+mcp__mcptask-online__GetPieceTool(account_code: "jchsoft", piece_id: 10464)
 ```
 
 You ARE the forked Haiku context that owns the MCP connection. Do not return text like "I'm an agent without MCP access" — that is wrong. Either the tool eventually succeeds, or it fails after 3 retries and you return the literal error string from the last attempt (see Error handling below).
@@ -120,7 +127,7 @@ When `with_attachments=false` is in args, replace the `### Attachments` block wi
 
 ### Next task
 
-Same template as piece details, for the piece the `@next` endpoint returned.
+Same template as piece details, for the piece `GetNextTaskTool` returned.
 
 ### Pieces list
 
@@ -145,7 +152,7 @@ Same template as piece details, for the piece the `@next` endpoint returned.
 
 **You (the fork) do NOT download the file.** A fork's working directory and process are torn down when the skill returns; even though `/tmp` is shared, having the fork curl a file the parent then depends on is unreliable — and a fork that just emits a "downloaded" block without actually running curl leaves the parent Reading a path that does not exist. So: **return the command, let the parent run it.**
 
-First fetch the piece via `mcptask://pieces/{account_code}/{piece_id}` so you have the real `relative_id`, the attachment's `relative_id`/`id`, the exact `filename`, and the `mime`. Then build a `curl` command the parent can paste verbatim. Save to a SAFE path — slugify the filename (strip spaces / non-ASCII; keep the extension), because attachment names often contain spaces and accented characters that break `-o`:
+Call `GetAttachmentTool` — it returns the attachment metadata plus a direct download URL, so you never hand-build the path. Slugify the filename for `-o` (strip spaces / non-ASCII; keep the extension), because attachment names often contain spaces and accented characters:
 
 ```
 ## Attachment — ready to download
@@ -156,12 +163,12 @@ First fetch the piece via `mcptask://pieces/{account_code}/{piece_id}` so you ha
 
 The PARENT must run this, then Read the file and verify it exists (do NOT assume success):
 
-    curl -fsS "https://mcptask.online/api/{account_code}/pieces/{piece_relative_id}/attachments/{attachment_id}/download" -o /tmp/piece_{piece_relative_id}_att_{attachment_id}.{ext} && ls -l /tmp/piece_{piece_relative_id}_att_{attachment_id}.{ext}
+    curl -fsS "{download_url from GetAttachmentTool}" -o /tmp/piece_{piece_relative_id}_att_{attachment_id}.{ext} && ls -l /tmp/piece_{piece_relative_id}_att_{attachment_id}.{ext}
 
 If `curl` reports an HTTP error or the file is tiny/JSON, the download failed (wrong id or auth) — surface that, do not Read garbage as an image.
 ```
 
-Use `relative_id` (not the internal `id`) for the piece in download URLs. Piece responses carry both: `id` is the internal DB row, `relative_id` is the URL-facing one. Using the wrong one returns a JSON error written into the file as if it were the image. The `-fsS` flags make `curl` fail loudly on HTTP errors instead of writing the error body into the file.
+If you must construct the URL yourself, use `relative_id` (not the internal `id`) for the piece. Piece responses carry both: `id` is the internal DB row, `relative_id` is the URL-facing one. Using the wrong one returns a JSON error written into the file as if it were the image. The `-fsS` flags make `curl` fail loudly on HTTP errors instead of writing the error body into the file.
 
 **Never** emit a "## Attachment downloaded" / "Path: …" success block — you did not download anything, so reporting a path the parent then fails to Read is the exact bug this skill avoids. Return only the command above.
 
@@ -169,7 +176,7 @@ Use `relative_id` (not the internal `id`) for the piece in download URLs. Piece 
 
 The parent only needs actionable signal. Drop:
 
-- Full effort history (use the `/efforts` URI on demand if asked)
+- Full effort history (use `GetPieceEffortsTool` on demand if asked)
 - Full message threads (only include 1-3 lines if relevant to the active task)
 - Internal DB metadata (`created_at`, `updated_at`, soft-delete flags, audit fields) unless requested
 - Nested duplicate fields (e.g. `project_id` + full `project` object — pick one)
@@ -179,15 +186,15 @@ Keep descriptions under 500 chars in the summary; the parent can ask for the ful
 
 ## Error handling
 
-If the MCP call fails after 3 retries, return the error message exactly. Don't pad with hedges or apologies — the parent needs the raw signal to decide whether to retry, change URIs, or surface to the user.
+If the MCP call fails after 3 retries, return the error message exactly. Don't pad with hedges or apologies — the parent needs the raw signal to decide whether to retry, change tools, or surface to the user.
 
-**Never** return fabricated explanations like "I'm an agent without MCP access", "you need to call this from the parent session", or "the skill is designed for fork context". You ARE the fork context. If `ReadMcpResourceTool` truly cannot reach the server, return:
+**Never** return fabricated explanations like "I'm an agent without MCP access", "you need to call this from the parent session", or "the skill is designed for fork context". You ARE the fork context. If the tool truly cannot reach the server, return:
 
 ```
 ## MCP error
-- Tool: ReadMcpResourceTool
+- Tool: <tool name>
 - Server: mcptask-online
-- URI: <attempted URI>
+- Args: <args you passed>
 - Attempts: 3
 - Last error: <exact error string from the tool>
 ```
