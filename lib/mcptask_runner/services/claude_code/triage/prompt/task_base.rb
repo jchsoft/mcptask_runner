@@ -14,7 +14,7 @@ module McptaskRunner
               Task triage agent. Analyze task, recommend model.
               OUTPUT ONLY JSON. No explanations, no commentary.
 
-              #{deferred_tools_note}
+              #{tool_availability_note}
 
               #{branch_detection_step}
 

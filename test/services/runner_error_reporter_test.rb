@@ -33,24 +33,24 @@ class RunnerErrorReporterTest < Minitest::Test
 
   def test_reports_hard_error_into_errors_epic
     in_tmpdir do
-      bodies = []
-      piece_id = with_capturing_http([json_response(201, { 'piece' => { 'relative_id' => 500 } })], bodies) do
+      requests = []
+      piece_id = with_capturing_http([json_response(201, { 'relative_id' => 500 })], requests) do
         report(status: 'error', termination: 'result', error_message: 'boom')
       end
 
       assert_equal 500, piece_id
-      body = JSON.parse(bodies[0])
-      assert_equal 10_445, body.dig('piece', 'parent_id')
-      assert_equal 69, body.dig('piece', 'project_id')
-      assert_equal 'bug', body.dig('piece', 'task_type_code')
-      assert_equal 'high', body.dig('piece', 'priority_code')
+      body = JSON.parse(requests[0].body)
+      assert_equal 10_445, body['parent_id']
+      assert_equal 69, body['project_id']
+      assert_equal 'bug', body['task_type_code']
+      assert_equal 'high', body['priority_code']
     end
   end
 
   def test_reports_loop_crash
     in_tmpdir do
-      bodies = []
-      piece_id = with_capturing_http([json_response(201, { 'piece' => { 'relative_id' => 7 } })], bodies) do
+      requests = []
+      piece_id = with_capturing_http([json_response(201, { 'relative_id' => 7 })], requests) do
         report(status: 'crash', termination: 'loop_crash', error_message: 'RuntimeError: kaboom')
       end
       assert_equal 7, piece_id
@@ -95,8 +95,8 @@ class RunnerErrorReporterTest < Minitest::Test
 
   def test_throttles_duplicate_fingerprint
     in_tmpdir do
-      responses = [json_response(201, { 'piece' => { 'relative_id' => 1 } }),
-                   json_response(201, { 'piece' => { 'relative_id' => 2 } })]
+      responses = [json_response(201, { 'relative_id' => 1 }),
+                   json_response(201, { 'relative_id' => 2 })]
       first = second = nil
       with_stubbed_http(responses) do
         first  = report(status: 'error', termination: 'inactivity_kill', error_message: 'inactive for 300s')
@@ -109,8 +109,8 @@ class RunnerErrorReporterTest < Minitest::Test
 
   def test_distinct_fingerprints_both_report
     in_tmpdir do
-      responses = [json_response(201, { 'piece' => { 'relative_id' => 1 } }),
-                   json_response(201, { 'piece' => { 'relative_id' => 2 } })]
+      responses = [json_response(201, { 'relative_id' => 1 }),
+                   json_response(201, { 'relative_id' => 2 })]
       with_stubbed_http(responses) do
         assert_equal 1, report(status: 'error', termination: 'inactivity_kill', error_message: 'a', task_id: 10)
         assert_equal 2, report(status: 'error', termination: 'context_overflow', error_message: 'b', task_id: 11)
@@ -152,11 +152,11 @@ class RunnerErrorReporterTest < Minitest::Test
     end
   end
 
-  def with_capturing_http(responses, bodies_out)
+  def with_capturing_http(responses, requests_out)
     call_count = 0
     fake_http = Object.new
     fake_http.define_singleton_method(:request) do |req|
-      bodies_out << req.body
+      requests_out << req
       resp = responses[call_count] || responses.last
       call_count += 1
       resp

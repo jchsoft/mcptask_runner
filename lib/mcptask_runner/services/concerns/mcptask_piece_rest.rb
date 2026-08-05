@@ -3,7 +3,7 @@
 require 'json'
 require 'net/http'
 require 'uri'
-require 'base64'
+require 'stringio'
 
 module McptaskRunner
   module Concerns
@@ -29,18 +29,27 @@ module McptaskRunner
 
       # POST a piece and return its Integer relative_id. attrs is the full piece body
       # (name / description / task_type_code / priority_code / project_id / parent_id …).
+      #
+      # Api::PiecesController#create reads its attributes with a top-level `params.permit(:piece_type,
+      # :name, :project_id, …)`, so the body must be FLAT — wrapping it in {piece: …} leaves every
+      # permitted key nil and `find_by!(relative_id: nil)` answers 404. project_id / parent_id are
+      # account-scoped relative_ids, never global ids.
       def post_piece(attrs)
-        response = http_post("/api/#{account_code}/pieces", JSON.generate({ piece: attrs }), 'Content-Type' => 'application/json')
+        response = http_post("/api/#{account_code}/pieces", 'Content-Type' => 'application/json') { |request| request.body = JSON.generate(attrs) }
         raise Error, "HTTP #{response.code} creating piece" unless response.is_a?(Net::HTTPSuccess)
 
-        JSON.parse(response.body).dig('piece', 'relative_id') or raise Error, "no 'piece.relative_id' in create response"
+        JSON.parse(response.body)['relative_id'] or raise Error, "no 'relative_id' in create response"
       rescue JSON::ParserError => e
         raise Error, "invalid JSON from create piece: #{e.message}"
       end
 
+      # Api::AttachmentsController#create wants a real multipart upload — it reads params[:file]
+      # .tempfile / .original_filename / .content_type — so a JSON+base64 body raises
+      # ParameterMissing. piece_id is the relative_id post_piece returned.
       def attach_content(piece_id, file_name, content)
-        body = JSON.generate({ attachment: { file_name: file_name, file_content: Base64.strict_encode64(content) } })
-        response = http_post("/api/#{account_code}/pieces/#{piece_id}/attachments", body, 'Content-Type' => 'application/json')
+        response = http_post("/api/#{account_code}/pieces/#{piece_id}/attachments") do |request|
+          request.set_form([['file', StringIO.new(content), { filename: file_name, content_type: 'text/plain' }]], 'multipart/form-data')
+        end
         raise Error, "HTTP #{response.code} attaching #{file_name}" unless response.is_a?(Net::HTTPSuccess)
       end
 
@@ -50,7 +59,9 @@ module McptaskRunner
           .gsub(/("Authorization"\s*:\s*)"[^"]{8,}"/, '\1"[REDACTED]"')
       end
 
-      def http_post(path, body, extra_headers = {})
+      # The block fills in the body — `request.body =` for JSON, `request.set_form` for multipart —
+      # because those two spellings set incompatible Content-Types.
+      def http_post(path, extra_headers = {})
         uri = URI.join(base_url, path)
         Net::HTTP.start(uri.host, uri.port,
                         use_ssl: uri.scheme == 'https',
@@ -60,7 +71,7 @@ module McptaskRunner
           request['Authorization'] = "Bearer #{token}"
           request['Accept'] = 'application/json'
           extra_headers.each { |k, v| request[k] = v }
-          request.body = body
+          yield request
           http.request(request)
         end
       end

@@ -42,6 +42,13 @@ test_files = [
   'test/services/work_loop/workflow_test.rb',
   'test/services/work_loop/triage_test.rb',
   'test/services/work_loop/urgent_bug_switch_test.rb',
+  # Piece-creation REST path. These were absent from this list, so the whole of BugReporter and
+  # RunnerErrorReporter went unexercised by CI — which is how a client that wrapped its body in
+  # {piece: …} (404 from Api::PiecesController#create) and posted base64 JSON to a multipart
+  # attachment endpoint reached production against a green suite.
+  'test/services/mcptask_piece_rest_test.rb',
+  'test/services/bug_reporter_test.rb',
+  'test/services/runner_error_reporter_test.rb',
   'test/tasks_test.rb',
   'test/test_helper_test.rb',
   'test/version_manager_test.rb',

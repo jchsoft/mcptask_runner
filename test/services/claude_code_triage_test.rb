@@ -287,34 +287,37 @@ account_code: `jchsoft`' do
     refute_includes instructions, 'hour_goal'
   end
 
-  # ReadMcpResourceTool is a DEFERRED tool: its schema is not loaded until ToolSearch pulls it in.
-  # A triage child that merely NOTICES the tool is missing gives up and emits status "error" (the
-  # prompt's "On MCP failure: STOP" reads a deferred tool as an outage), killing the whole work
-  # loop. #38 fixed the execution prompts but wrongly assumed triage was immune — production logs
-  # showed triage bailing at STEP 2. Guard the ToolSearch-first hint on every triage fetch.
-  def test_discovery_triage_tells_model_to_load_deferred_readmcpresource_tool
+  # Reaching ReadMcpResourceTool is HOST-DEPENDENT. Where tool search is on the tool is deferred and
+  # needs ToolSearch first; on hosts driving a non-Anthropic model through an ANTHROPIC_BASE_URL proxy
+  # there is no ToolSearch at all and the tool sits in the active list. #38 fixed the execution
+  # prompts, then triage got a preamble asserting every MCP tool IS deferred — which flipped the bug
+  # instead of fixing it: a zuboklik triage child hunted for the nonexistent ToolSearch, faked it with
+  # `Bash echo`, and emitted status "error", killing the work loop. So every triage prompt must offer
+  # BOTH branches and lead with "it's in your list → call it".
+  def test_discovery_triage_covers_both_tool_availability_branches
     File.stub :exist?, true do
       File.stub :read, 'project_relative_id=7
 account_code: `jchsoft`' do
-        instructions = McptaskRunner::ClaudeCode::Triage.new.send(:build_instructions)
-
-        assert_includes instructions, 'DEFERRED TOOLS'
-        assert_includes instructions, 'select:ReadMcpResourceTool'
+        assert_tool_availability_note McptaskRunner::ClaudeCode::Triage.new.send(:build_instructions)
       end
     end
   end
 
-  def test_pinned_triage_tells_model_to_load_deferred_readmcpresource_tool
-    instructions = McptaskRunner::ClaudeCode::Triage.new(task_id: 456).send(:build_instructions)
-
-    assert_includes instructions, 'DEFERRED TOOLS'
-    assert_includes instructions, 'select:ReadMcpResourceTool'
+  def test_pinned_triage_covers_both_tool_availability_branches
+    assert_tool_availability_note McptaskRunner::ClaudeCode::Triage.new(task_id: 456).send(:build_instructions)
   end
 
-  def test_story_triage_tells_model_to_load_deferred_readmcpresource_tool
-    instructions = McptaskRunner::ClaudeCode::Triage.new(story_id: 8965).send(:build_instructions)
+  def test_story_triage_covers_both_tool_availability_branches
+    assert_tool_availability_note McptaskRunner::ClaudeCode::Triage.new(story_id: 8965).send(:build_instructions)
+  end
 
-    assert_includes instructions, 'DEFERRED TOOLS'
+  private
+
+  def assert_tool_availability_note(instructions)
+    assert_includes instructions, 'TOOL AVAILABILITY'
+    assert_includes instructions, 'CALL IT DIRECTLY'
     assert_includes instructions, 'select:ReadMcpResourceTool'
+    assert_includes instructions, 'no ToolSearch tool'
+    refute_includes instructions, 'every MCP tool (e.g. ReadMcpResourceTool) is DEFERRED'
   end
 end
