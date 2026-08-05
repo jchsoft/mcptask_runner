@@ -238,7 +238,12 @@ module McptaskRunner
       # Handle multiple levels of backslash escaping
       result = json_string
       result = result.gsub(/\\\\/, '\\') while result.include?('\\\\')
-      result = result.gsub(/\\(["\\])/, '\1') while result.include?('\\')
+      loop do
+        next_result = result.gsub(/\\(["\\])/, '\1')
+        break if next_result == result
+
+        result = next_result
+      end
       result
     end
 

@@ -1,4 +1,5 @@
 require 'test_helper'
+require 'timeout'
 require_relative '../../lib/mcptask_runner/services/output_formatter'
 
 class OutputFormatterTest < Minitest::Test
@@ -60,6 +61,17 @@ class OutputFormatterTest < Minitest::Test
     result = McptaskRunner::OutputFormatter.format_line(line)
     # Should still add [Claude] prefix even if not valid JSON
     assert_match /\n\[Claude\]/, result
+  end
+
+  def test_format_line_with_malformed_json_containing_bare_backslash_does_not_hang
+    line = '{invalid \\t json}'
+    result = Timeout.timeout(1) { McptaskRunner::OutputFormatter.format_line(line) }
+    assert_match /\n\[Claude\]/, result
+  end
+
+  def test_unescape_json_terminates_on_trailing_backslash
+    result = Timeout.timeout(1) { McptaskRunner::OutputFormatter.unescape_json('trailing\\') }
+    assert_equal 'trailing\\', result
   end
 
   def test_strips_system_reminder_from_non_json_output
