@@ -3,6 +3,9 @@
 require 'test_helper'
 require 'tmpdir'
 require 'fileutils'
+# Installer lazy-requires this (installer.rb:96) rather than mcptask_runner.rb loading it eagerly,
+# so the constant does not exist just from requiring test_helper.
+require 'mcptask_runner/services/token_provisioner'
 
 class TokenProvisionerTest < Minitest::Test
   Klass = McptaskRunner::TokenProvisioner
@@ -79,11 +82,9 @@ class TokenProvisionerTest < Minitest::Test
     ENV['TEST_EMAIL_A'] = 'user@example.com'
     ENV['TEST_PASS_A']  = 'secret'
 
-    fake_response = Minitest::Mock.new
-    fake_response.expect(:code, '200')
-    fake_response.expect(:body, '{"token":"jwt_abc123"}')
+    response = fake_response('200', '{"token":"jwt_abc123"}')
 
-    Net::HTTP.stub(:new, mock_http(fake_response)) do
+    Net::HTTP.stub(:new, mock_http(response)) do
       capture_io { build.call }
     end
 
@@ -97,11 +98,9 @@ class TokenProvisionerTest < Minitest::Test
     ENV['TEST_EMAIL_A'] = 'user@example.com'
     ENV['TEST_PASS_A']  = 'secret'
 
-    fake_response = Minitest::Mock.new
-    fake_response.expect(:code, '200')
-    fake_response.expect(:body, '{"token":"jwt_abc123"}')
+    response = fake_response('200', '{"token":"jwt_abc123"}')
 
-    Net::HTTP.stub(:new, mock_http(fake_response)) do
+    Net::HTTP.stub(:new, mock_http(response)) do
       capture_io { build.call }
     end
 
@@ -115,11 +114,9 @@ class TokenProvisionerTest < Minitest::Test
     ENV['TEST_EMAIL_A'] = 'user@example.com'
     ENV['TEST_PASS_A']  = 'secret'
 
-    fake_response = Minitest::Mock.new
-    fake_response.expect(:code, '401')
-    fake_response.expect(:body, '{"error":"unauthorized"}')
+    response = fake_response('401', '{"error":"unauthorized"}')
 
-    Net::HTTP.stub(:new, mock_http(fake_response)) do
+    Net::HTTP.stub(:new, mock_http(response)) do
       _out, err = capture_io { build.call }
       assert_match 'WARNING', err
       assert_match 'TEST_TOKEN_A', err
@@ -131,11 +128,9 @@ class TokenProvisionerTest < Minitest::Test
     ENV['TEST_EMAIL_A'] = 'user@example.com'
     ENV['TEST_PASS_A']  = 'secret'
 
-    fake_response = Minitest::Mock.new
-    fake_response.expect(:code, '200')
-    fake_response.expect(:body, '{"token":null}')
+    response = fake_response('200', '{"token":null}')
 
-    Net::HTTP.stub(:new, mock_http(fake_response)) do
+    Net::HTTP.stub(:new, mock_http(response)) do
       _out, err = capture_io { build.call }
       assert_match 'WARNING', err
     end
@@ -178,12 +173,22 @@ class TokenProvisionerTest < Minitest::Test
 
   private
 
-  def mock_http(fake_response)
+  # Plain stub, not Minitest::Mock: fetch_token reads the body twice on the failure path — once to
+  # parse it, once to quote it in the Error message — and a Mock carrying a single :body expect
+  # turned that into "No more expects available for :body" instead of the warning under test.
+  def fake_response(code, body)
+    response = Object.new
+    response.define_singleton_method(:code) { code }
+    response.define_singleton_method(:body) { body }
+    response
+  end
+
+  def mock_http(response)
     http_mock = Object.new
     http_mock.define_singleton_method(:use_ssl=) { |_| }
     http_mock.define_singleton_method(:open_timeout=) { |_| }
     http_mock.define_singleton_method(:read_timeout=) { |_| }
-    http_mock.define_singleton_method(:request) { |_req| fake_response }
+    http_mock.define_singleton_method(:request) { |_req| response }
     ->(_, _) { http_mock }
   end
 end
