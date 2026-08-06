@@ -18,6 +18,27 @@ if [[ "$(uname)" == "Darwin" ]]; then
   export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 fi
 
+# Align Ruby with the project's .ruby-version, also BEFORE Ruby starts.
+# Claude Code's Bash tool runs a non-interactive shell, so rvm's cd hook never
+# fires and PATH keeps pointing at the rvm *default* ruby. A project pinning a
+# different version then dies instantly on `bin/ci` / `bin/rails test` with
+# Bundler::RubyVersionMismatch, because those binstubs resolve `ruby` through
+# `#!/usr/bin/env`. Prepending the pinned version's bin dir fixes ci_start,
+# test_start and any direct run_with_log call in one place.
+if [ -r "$PWD/.ruby-version" ]; then
+  pinned_ruby="$(tr -d '[:space:]' < "$PWD/.ruby-version")"
+  pinned_ruby="${pinned_ruby#ruby-}"
+  for ruby_bindir in "$HOME/.rvm/wrappers/ruby-$pinned_ruby" \
+                     "$HOME/.rbenv/versions/$pinned_ruby/bin" \
+                     "$HOME/.asdf/installs/ruby/$pinned_ruby/bin"; do
+    if [ -x "$ruby_bindir/ruby" ]; then
+      export PATH="$ruby_bindir:$PATH"
+      break
+    fi
+  done
+  unset pinned_ruby ruby_bindir
+fi
+
 # Per-project log dir: sha256 slug of $PWD prevents cross-project latest_*.log collisions.
 project_slug="$(printf '%s' "$PWD" | shasum -a 256 | cut -c1-12)"
 LOGDIR="$HOME/.claude/logs/projects/${project_slug}"
