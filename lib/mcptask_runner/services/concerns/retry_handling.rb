@@ -118,15 +118,23 @@ module McptaskRunner
       # it and continues — the same recovery the next scheduled WorkLoop run would do, just now.
       # Capped at MAX_OVERFLOW_RESTARTS; a re-overflow after restart means the task is genuinely
       # too big → terminal.
+      #
+      # Either way the overflow is also persisted as a TaskHandoff note, because "terminal" only
+      # ends THIS process: the piece stays in_progress, so a later runner cycle re-picks the same
+      # task with empty context and would re-explore its way into the same wall. The note gives
+      # that next attempt the on-disk state + a context budget (see #prior_overflow_preamble).
       def handle_context_overflow(start_time)
         elapsed_hours = ((Time.now - start_time) / 3600.0).round(2)
 
         if @retry_state.overflow_restart_count >= MAX_OVERFLOW_RESTARTS
           Logger.error "[#{@log_tag}] Context overflow again after fresh restart (#{elapsed_hours}h) — " \
                        'session unrecoverable, emitting terminal error'
-          return error_result("Context overflow after #{elapsed_hours}h — fresh restart also overflowed, task exceeds token limit")
-            .merge('reason' => 'context_overflow')
+          message = "Context overflow after #{elapsed_hours}h — fresh restart also overflowed, task exceeds token limit"
+          record_task_handoff(start_time, terminal: true, message: message)
+          return error_result(message).merge('reason' => 'context_overflow')
         end
+
+        record_task_handoff(start_time, terminal: false, message: "Context overflow after #{elapsed_hours}h — restarting fresh")
 
         @retry_state.overflow_restart_count += 1
         @retry_state.fresh_restart = true

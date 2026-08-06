@@ -20,6 +20,7 @@ Generic exploration order (Memory → `/discover` → CodeGraph → LSP → Read
 
 ## Logs
 - **Per-run state** (start here for hung runs): `log/runs/run_*.json` — `RunLog`, refreshed per heartbeat. Off: `MCPTASK_RUN_LOG=0`.
+- **Context-overflow handoff** (why a task keeps dying): `log/handoffs/task_*.json` — `TaskHandoff`, one note per task, replayed as a prompt preamble on the next run. Off: `MCPTASK_TASK_HANDOFF=0`.
 - **Raw stream**: `~/logs/mcptask_runner/<slug>.log`.
 - **`/ci-runner`**: `~/.claude/logs/projects/<sha256-cwd>/ci-runner_<ts>.log`.
 

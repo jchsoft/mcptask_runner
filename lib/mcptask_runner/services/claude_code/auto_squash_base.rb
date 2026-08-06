@@ -91,6 +91,10 @@ module McptaskRunner
       # don't need a separate executor class or a flag in subclass dispatch.
       def run_fast_track_already_done(preflight)
         ensure_on_main_branch
+        # The task is merged, so any context-overflow handoff note for it is obsolete — and its
+        # "start from git status on the branch" advice would contradict this prompt's "do not
+        # touch git". Drop it before attempt_execution can prepend it.
+        TaskHandoff.clear(@task_id)
         define_singleton_method(:build_instructions) { fast_track_already_done_instructions(preflight) }
         Logger.info_stdout("[#{@log_tag}] Starting FAST-TRACK already_done (PR ##{preflight[:pr_number]} already merged)")
         @accumulated_output = ''.dup
