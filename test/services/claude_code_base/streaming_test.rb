@@ -151,4 +151,39 @@ class ClaudeCodeBaseStreamingTest < Minitest::Test
     assert_equal 'finished', builder.status
     assert_empty emitted.last[:active_actions], 'orphan Skill cleared even from processing state'
   end
+
+  # Regression: StalledError/Timeout::Error/QuotaExceededMidTaskError all propagate out of
+  # join_streaming_threads from INSIDE the Open3.popen3 block. finalize_streaming used to be
+  # called only AFTER that block, so it was skipped entirely for those three terminations —
+  # the RunLog termination stamp went missing for exactly the pathological cases someone opens
+  # the file to diagnose.
+  def test_execute_with_streaming_finalizes_run_log_even_when_join_streaming_threads_raises
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'sonnet' }
+    fake_wait_thr = Object.new.tap { |o| o.define_singleton_method(:pid) { 4242 } }
+    noop_thread = Thread.new { }
+    finalize_calls = []
+    disable_env_was = ENV.delete(McptaskRunner::EventStream::DISABLE_ENV)
+
+    base.stub(:start_run_log, nil) do
+      base.stub(:start_stdout_thread, noop_thread) do
+        base.stub(:start_stderr_thread, noop_thread) do
+          base.stub(:start_supervised_heartbeat, noop_thread) do
+            base.stub(:join_streaming_threads, ->(*) { raise Timeout::Error, 'Claude inactive for 900s' }) do
+              base.stub(:finalize_streaming, ->(elapsed) { finalize_calls << elapsed }) do
+                popen3_stub = ->(*_args, **_kwargs, &blk) { blk.call(StringIO.new, StringIO.new, StringIO.new, fake_wait_thr) }
+                Open3.stub(:popen3, popen3_stub) do
+                  assert_raises(Timeout::Error) { base.send(:execute_with_streaming, %w[echo hi]) }
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+
+    assert_equal 1, finalize_calls.size, 'finalize_streaming must still run when the popen3 block raises'
+  ensure
+    ENV[McptaskRunner::EventStream::DISABLE_ENV] = disable_env_was if disable_env_was
+  end
 end
