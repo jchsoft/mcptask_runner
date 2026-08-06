@@ -28,7 +28,7 @@ module McptaskRunner
     def initialize(log_tag:, session_id:, now: Time.now)
       @log_tag = log_tag
       session8 = session_id.to_s.delete('-')[0, 8]
-      @path = File.join(RUNS_DIR, "run_#{now.strftime('%Y%m%d_%H%M%S')}_#{log_tag}_#{session8}.json")
+      @path = File.join(RUNS_DIR, "run_#{now.strftime('%Y%m%d_%H%M%S.%L')}_#{log_tag}_#{session8}.json")
       @record = {}
     end
 

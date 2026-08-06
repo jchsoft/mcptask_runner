@@ -18,7 +18,7 @@ class RunLogTest < Minitest::Test
     FileUtils.remove_entry(@tmp)
   end
 
-  def build(now: Time.new(2026, 6, 5, 8, 1, 0))
+  def build(now: Time.new(2026, 6, 5, 8, 1, Rational(123, 1000)))
     McptaskRunner::RunLog.new(log_tag: "TodayAutoSquash", session_id: "abcdef12-3456-7890-abcd-ef1234567890", now: now)
   end
 
@@ -27,7 +27,15 @@ class RunLogTest < Minitest::Test
   end
 
   def test_path_includes_timestamp_tag_and_session_prefix
-    assert_equal File.join('log', 'runs', 'run_20260605_080100_TodayAutoSquash_abcdef12.json'), build.path
+    assert_equal File.join('log', 'runs', 'run_20260605_080100.123_TodayAutoSquash_abcdef12.json'), build.path
+  end
+
+  def test_path_is_unique_for_attempts_in_the_same_second
+    now = Time.new(2026, 6, 5, 8, 1, Rational(1, 1000))
+    first = McptaskRunner::RunLog.new(log_tag: "TodayAutoSquash", session_id: "abcdef12", now: now)
+    second = McptaskRunner::RunLog.new(log_tag: "TodayAutoSquash", session_id: "abcdef12", now: now + 0.5)
+
+    refute_equal first.path, second.path
   end
 
   def test_start_creates_runs_dir_and_writes_meta
