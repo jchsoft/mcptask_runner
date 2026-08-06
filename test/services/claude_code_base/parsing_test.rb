@@ -181,6 +181,18 @@ class ClaudeCodeBaseParsingTest < Minitest::Test
     assert_equal 'Part 1Part 2', base.send(:extract_text_from_line, line)
   end
 
+  def test_extract_text_from_line_with_string_message_does_not_raise
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = '{"type":"system","subtype":"api_retry","error_status":529,"message":"Repeated 529 Overloaded errors"}'
+    assert_equal '', base.send(:extract_text_from_line, line)
+  end
+
+  def test_extract_text_from_line_with_string_delta_does_not_raise
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = '{"type":"content_block_delta","delta":"not a hash"}'
+    assert_equal '', base.send(:extract_text_from_line, line)
+  end
+
   def test_write_debug_dump_creates_file
     base = McptaskRunner::ClaudeCodeBase.new
     base.instance_variable_get(:@state).stream_line_count = 198

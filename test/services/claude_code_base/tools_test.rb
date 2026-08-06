@@ -64,6 +64,15 @@ class ClaudeCodeBaseToolsTest < Minitest::Test
                  "redacted (empty) thinking must still reach the web UI as a placeholder"
   end
 
+  def test_track_tool_event_with_string_message_does_not_raise
+    base = McptaskRunner::ClaudeCodeBase.new
+    line = '{"type":"system","subtype":"api_retry","error_status":529,"message":"Repeated 529 Overloaded errors"}'
+
+    McptaskRunner::EventStream.stub(:emit_snapshot, nil) { base.send(:track_tool_event, line) }
+
+    assert_equal 0, base.instance_variable_get(:@snapshot_builder).active_tool_count
+  end
+
   def test_track_tool_event_captures_tool_description
     base = McptaskRunner::ClaudeCodeBase.new
     line = JSON.generate(
