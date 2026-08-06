@@ -466,19 +466,21 @@ module McptaskRunner
       EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)
       execution_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-      Open3.popen3(FORK_MODEL_ENV, *command, pgroup: true) do |stdin, stdout, stderr, wait_thr|
-        @state.child_pid = wait_thr.pid
-        stdin.close
-        start_run_log
+      begin
+        Open3.popen3(FORK_MODEL_ENV, *command, pgroup: true) do |stdin, stdout, stderr, wait_thr|
+          @state.child_pid = wait_thr.pid
+          stdin.close
+          start_run_log
 
-        stdout_thread    = start_stdout_thread(stdout, stdout_content)
-        stderr_thread    = start_stderr_thread(stderr, stderr_content)
-        heartbeat_thread = start_supervised_heartbeat(stderr_content, execution_start)
+          stdout_thread    = start_stdout_thread(stdout, stdout_content)
+          stderr_thread    = start_stderr_thread(stderr, stderr_content)
+          heartbeat_thread = start_supervised_heartbeat(stderr_content, execution_start)
 
-        join_streaming_threads(stdout_thread, stderr_thread, heartbeat_thread, wait_thr, stderr_content)
+          join_streaming_threads(stdout_thread, stderr_thread, heartbeat_thread, wait_thr, stderr_content)
+        end
+      ensure
+        finalize_streaming(execution_start)
       end
-
-      finalize_streaming(execution_start)
       stdout_content
     end
 
