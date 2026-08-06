@@ -144,6 +144,31 @@ account_code: `jchsoft`' do
     assert_includes instructions, 'RESUMING OVERRIDE'
   end
 
+  # Task #11291 (trilingual features-page rewrite, ~1100 generated lines) was triaged "smart" =
+  # kimi-k2.7-code:cloud, a 256K window where genius/minimax has 512K, and died of context overflow
+  # twice. The logic was trivial; the OUTPUT volume was not — and the old rules filed "locale" under
+  # smart. Generated text fills the window exactly like input does, so volume must route the model.
+  def test_instructions_route_high_output_content_to_genius
+    File.stub :exist?, true do
+      File.stub :read, 'project_relative_id=7
+account_code: `jchsoft`' do
+        instructions = McptaskRunner::ClaudeCode::Triage.new.send(:build_instructions)
+
+        assert_includes instructions, 'HIGH-OUTPUT OVERRIDE'
+        assert_includes instructions, '2+ locale files'
+        assert_includes instructions, 'Beats the DURATION HINT'
+        refute_includes instructions, 'config/locale/docs',
+                        'plain "locale" under smart is what mis-routed #11291'
+      end
+    end
+  end
+
+  def test_story_triage_routes_high_output_content_to_genius
+    instructions = McptaskRunner::ClaudeCode::Triage.new(story_id: 8965).send(:build_instructions)
+
+    assert_includes instructions, 'HIGH-OUTPUT OVERRIDE'
+  end
+
   def test_instructions_default_to_smart
     File.stub :exist?, true do
       File.stub :read, 'project_relative_id=7

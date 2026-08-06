@@ -24,11 +24,13 @@ module McptaskRunner
 
               RESUMING OVERRIDE: if resuming=true → recommended_model="genius" ALWAYS (previous attempt didn't finish — needs strongest model regardless of complexity)
 
+              HIGH-OUTPUT OVERRIDE: if the deliverable is a LOT of GENERATED TEXT rather than a small targeted change → recommended_model="genius". Signals: landing/marketing page copy, multi-section page rewrite, docs, or ANY task touching 2+ locale files (a cs/en/sk change writes every block three times). Generated output fills the context window exactly like input does, so these die of context overflow on a smaller model even when the logic is trivial. Beats the DURATION HINT below.
+
               "primitive": trivial — typo fix, single CSS change, one-line config
 
               "genius" ONLY: UI elements/improvements/beautification, complex architecture (models+associations, multi-service, migrations w/ data transforms), security (auth/encryption), ambiguous requirements, Story type, FIXING FAILING TESTS / debugging test failures (red→green, flaky tests, CI-failing specs — Sonnet historically struggles here)
 
-              "smart" (DEFAULT): everything else — CRUD, refactoring, bug fixes, writing NEW tests, simple frontend, validations/scopes/callbacks, config/locale/docs, API endpoints
+              "smart" (DEFAULT): everything else — CRUD, refactoring, bug fixes, writing NEW tests, simple frontend, validations/scopes/callbacks, single-locale key tweaks / config / short docs, API endpoints
 
               DURATION HINT: <1 hour → lean smart/primitive
             RULES
