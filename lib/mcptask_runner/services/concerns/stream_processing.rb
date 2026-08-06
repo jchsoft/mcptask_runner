@@ -54,7 +54,10 @@ module McptaskRunner
 
       def track_tool_event(line)
         parsed = JSON.parse(line)
-        content_items = parsed.dig('message', 'content')
+        message = parsed['message']
+        return unless message.is_a?(Hash)
+
+        content_items = message['content']
         return unless content_items.is_a?(Array)
 
         now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -314,12 +317,14 @@ module McptaskRunner
 
       def extract_text_from_line(line)
         parsed = JSON.parse(line)
-        if (content = parsed.dig('message', 'content'))
-          content.select { |item| item['type'] == 'text' }
-                 .map { |item| item['text'] }
-                 .join
-        elsif parsed.dig('delta', 'type') == 'text_delta'
-          parsed.dig('delta', 'text') || ''
+        message = parsed['message']
+        delta = parsed['delta']
+        if message.is_a?(Hash) && message['content'].is_a?(Array)
+          message['content'].select { |item| item['type'] == 'text' }
+                             .map { |item| item['text'] }
+                             .join
+        elsif delta.is_a?(Hash) && delta['type'] == 'text_delta'
+          delta['text'] || ''
         else
           ''
         end
