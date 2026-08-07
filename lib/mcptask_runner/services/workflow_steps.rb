@@ -28,13 +28,24 @@ module McptaskRunner
     # The discriminator that holds on both hosts is whether ToolSearch itself exists, so the rule is
     # phrased on that, not on "is the tool in my list" (a deferred tool IS named in the list).
     #
+    # Which is also why the lead line says WHICH TOOL and WHICH TRANSPORT but never "call it first":
+    # ordering is exactly the host-dependent part. An earlier draft led with "DIRECT MCP call, the
+    # FIRST route you try" — a child that acts on that headline without reading the two sub-bullets
+    # commits to the direct call on a deferring host, which is the fatal path above. "DIRECT" was
+    # only ever meant as "MCP, not REST", so it is spelled that way now.
+    #
+    # The deferred branch quotes the marker SHORT ("not enabled in this context"), never the full
+    # 'exists but is not enabled in this context' StreamProcessing#tool_not_enabled_error? matches on:
+    # that detector still fires on an is_error tool_result echoing the phrase, so a failing command
+    # that happens to print this prompt back (a red `bin/ci`, a diff) would kill its own session.
+    #
     # REST is never a fallback: Api::PiecesController#show does `Piece.find(params[:id])` — an
     # INTERNAL id — so a relative_id there answers a foreign piece or 403 forbidden.
     def mcp_fetch_lines(indent, uri)
       [
-        %(#{indent}- FETCH IT WITH ReadMcpResourceTool: server="mcptask-online", uri="#{uri}" — DIRECT MCP call, the FIRST route you try.),
-        %(#{indent}  - No ToolSearch tool on this host → nothing is deferred here, CALL ReadMcpResourceTool DIRECTLY.),
-        %(#{indent}  - ToolSearch exists and ReadMcpResourceTool is only NAMED (schema not loaded) → ToolSearch query "select:ReadMcpResourceTool" first, THEN invoke it.),
+        %(#{indent}- FETCH IT WITH ReadMcpResourceTool: server="mcptask-online", uri="#{uri}" — the MCP route, never REST. HOW you reach that tool depends on the host, so pick your branch BEFORE calling:),
+        %(#{indent}  - You have NO ToolSearch tool → this host defers nothing, ReadMcpResourceTool is live: CALL IT DIRECTLY, no lookup step.),
+        %(#{indent}  - You HAVE ToolSearch and ReadMcpResourceTool is only NAMED (no schema loaded) → it is DEFERRED, which is NOT missing and NOT an MCP failure: ToolSearch query "select:ReadMcpResourceTool" FIRST, THEN invoke it. Calling it directly here answers "not enabled in this context" and kills the attempt.),
         %(#{indent}- NEVER Bash/curl/Net::HTTP, NEVER the /mcptask-read skill: REST takes the INTERNAL id, so a relative_id there returns the WRONG piece or 403. "Tool not available" is never a reason to improvise a fetch route or to fail.)
       ]
     end
