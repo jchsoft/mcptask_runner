@@ -218,13 +218,23 @@ module McptaskRunner
       # processes (MCP servers, hooks) inherited from Claude can keep the pipe open
       # indefinitely after Claude itself dies, blocking stdout_thread.join forever.
       # Heartbeat also exits on @state.stopping, so the subprocess has no other watchdog.
+      #
+      # Sets snapshot status to :error (mirrors check_stall / check_for_tool_not_enabled) so
+      # finalize_streaming skips re-setting :finished. Without it an overflow-killed attempt
+      # looked like a clean completion on mcptask.online: the card flipped Processing →
+      # Finished and the server reaped it 5 min later, while handle_context_overflow was
+      # already running a fresh restart that kept working for another 20+ minutes.
+      # A surviving restart re-opens the card via reopen_snapshot_for_retry.
       def check_for_context_overflow(line)
         return if @state.context_overflow
         return unless context_overflow_error?(line)
 
         @state.context_overflow = true
         @state.stopping = true
+        error_msg = 'Context overflow — prompt exceeded the model context window, session is dead'
         Logger.error "[#{@log_tag}] Context overflow detected ('Prompt is too long') — session is dead, marking terminal"
+        @snapshot_builder.set_status(:error, error_message: error_msg)
+        EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)
         kill_process(@state.child_pid)
       end
 

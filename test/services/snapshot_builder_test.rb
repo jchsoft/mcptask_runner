@@ -270,6 +270,19 @@ class SnapshotBuilderTest < Minitest::Test
     assert_equal "processing", @builder.to_h[:status]
   end
 
+  # Retry bypass: a fresh-session restart (context overflow, tool-not-enabled) resumes the SAME
+  # task without a triage hop, so reopen_snapshot_for_retry must be able to re-open a card its
+  # watchdog just flagged :error — otherwise the restarted attempt runs under a terminal card.
+  def test_valid_transition_error_to_processing_fresh_restart
+    @builder.set_status("triage")
+    @builder.set_status("processing")
+    @builder.set_status("error", error_message: "Context overflow")
+
+    @builder.set_status("processing")
+
+    assert_equal "processing", @builder.to_h[:status]
+  end
+
   def test_invalid_transition_raises
     assert_raises(McptaskRunner::InvalidTransitionError) do
       @builder.set_status("finished") # starting → finished is invalid

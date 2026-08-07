@@ -249,6 +249,7 @@ module McptaskRunner
       # of the healthy fresh session retries normally with --continue.
       fresh = @retry_state.fresh_restart
       @retry_state.fresh_restart = false
+      reopen_snapshot_for_retry
       continue = (@retry_state.count.positive? || @retry_state.marker_retry_mode) && !fresh
       instructions = continue ? build_continuation_instructions : build_instructions
       instructions = "#{attempt_preamble(fresh: fresh, continue: continue)}#{instructions}"
@@ -526,6 +527,20 @@ module McptaskRunner
       rescue StandardError => e
         Logger.error "[#{@log_tag}] stderr thread crashed: #{e.class}: #{e.message}"
       end
+    end
+
+    # Re-open the web card at the top of every attempt. The attempt that just died left the
+    # snapshot terminal — :finished from finalize_streaming, or :error from the overflow /
+    # tool-not-enabled watchdogs — which is correct for THAT attempt and wrong for the one
+    # starting now. A fresh-session restart resumes the same task without passing through
+    # triage (the only other place that re-sets :processing), so without this the card stayed
+    # terminal for the whole restarted attempt: mcptask.online showed "Finished" and reaped
+    # the card while the runner worked on for another 20+ minutes.
+    def reopen_snapshot_for_retry
+      return unless %w[finished error].include?(@snapshot_builder.status)
+
+      @snapshot_builder.set_status(:processing)
+      EventStream.emit_snapshot(@snapshot_builder.to_h, force: true)
     end
 
     def finalize_streaming(execution_start)

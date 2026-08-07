@@ -123,6 +123,10 @@ module McptaskRunner
       # ends THIS process: the piece stays in_progress, so a later runner cycle re-picks the same
       # task with empty context and would re-explore its way into the same wall. The note gives
       # that next attempt the on-disk state + a context budget (see #prior_overflow_preamble).
+      #
+      # Snapshot already emitted as :error by check_for_context_overflow; the restarted attempt
+      # re-opens the card via reopen_snapshot_for_retry, so the web UI follows the live attempt
+      # instead of freezing on the dead one.
       def handle_context_overflow(start_time)
         elapsed_hours = ((Time.now - start_time) / 3600.0).round(2)
 
@@ -156,7 +160,7 @@ module McptaskRunner
       # mirroring handle_context_overflow. Capped at MAX_TOOL_NOT_ENABLED_RESTARTS.
       #
       # Snapshot already emitted as :error by check_for_tool_not_enabled in stream_processing.rb
-      # (mirrors check_stall); the retried attempt supersedes it.
+      # (mirrors check_stall); the retried attempt re-opens the card via reopen_snapshot_for_retry.
       def handle_tool_not_enabled(start_time)
         elapsed_hours = ((Time.now - start_time) / 3600.0).round(2)
 
