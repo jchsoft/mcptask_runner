@@ -126,4 +126,78 @@ class ClaudeCodeBaseRetryTest < Minitest::Test
     assert_includes contract, '"status": "success"'
     assert_includes contract, '```json'
   end
+
+  # Regression (mcptask #11358): a fresh-session restart resumes the SAME task without passing
+  # through triage — the only other place that re-sets :processing — so the card stayed terminal
+  # for the whole restarted attempt. mcptask.online showed "Finished" and closed the card while
+  # the runner worked on for another 20+ minutes.
+  def test_reopen_snapshot_for_retry_reopens_finished_card
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:processing)
+    builder.set_status(:finished)
+
+    emitted = []
+    McptaskRunner::EventStream.stub(:emit_snapshot, ->(snapshot, **_kw) { emitted << snapshot }) do
+      base.send(:reopen_snapshot_for_retry)
+    end
+
+    assert_equal 'processing', builder.status, 'retried attempt must re-open the card the dead attempt closed'
+    assert_equal 'processing', emitted.last[:status], 'web UI must be told immediately, not on the next heartbeat'
+  end
+
+  # Overflow / tool-not-enabled watchdogs end the dead attempt at :error, so the restart has to
+  # re-open from there too.
+  def test_reopen_snapshot_for_retry_reopens_error_card
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:processing)
+    builder.set_status(:error, error_message: 'Context overflow')
+
+    base.send(:reopen_snapshot_for_retry)
+
+    assert_equal 'processing', builder.status
+    assert_nil builder.to_h[:error_message], 're-opening must clear the dead attempt\'s error message'
+  end
+
+  # Non-terminal statuses belong to the live session (triage hop, first attempt of a task) —
+  # re-opening them would be a spurious transition, and starting → processing would mislabel triage.
+  def test_reopen_snapshot_for_retry_leaves_non_terminal_status_untouched
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:triage)
+
+    emitted = []
+    McptaskRunner::EventStream.stub(:emit_snapshot, ->(snapshot, **_kw) { emitted << snapshot }) do
+      base.send(:reopen_snapshot_for_retry)
+    end
+
+    assert_equal 'triage', builder.status
+    assert_empty emitted, 'must not emit a snapshot when nothing changed'
+  end
+
+  # End-to-end on the real funnel: every attempt goes through attempt_execution, so the card is
+  # live again before the child is even forked.
+  def test_attempt_execution_reopens_terminal_card_before_forking
+    base = McptaskRunner::ClaudeCodeBase.new
+    base.define_singleton_method(:model_name) { 'sonnet' }
+    base.define_singleton_method(:build_instructions) { 'noop' }
+    builder = base.instance_variable_get(:@snapshot_builder)
+    builder.set_status(:processing)
+    builder.set_status(:error, error_message: 'Context overflow')
+    base.instance_variable_get(:@retry_state).fresh_restart = true
+    base.instance_variable_set(:@accumulated_output, +'')
+
+    status_at_fork = nil
+    base.stub(:build_command, ->(_b, _i, continue_session: false) { status_at_fork = builder.status; [] }) do
+      base.stub(:execute_with_streaming, '') do
+        base.stub(:parse_result, { 'status' => 'success' }) do
+          base.instance_variable_get(:@state).result_received = true
+          base.send(:attempt_execution, Time.now)
+        end
+      end
+    end
+
+    assert_equal 'processing', status_at_fork, 'card must be re-opened before the restarted child starts'
+  end
 end

@@ -47,6 +47,9 @@ module McptaskRunner
     # finished → processing: urgent-bug-pin bypass — after a story/task finishes and pins an
     # urgent bug, execute_pinned_urgent_bug skips triage and jumps the next task straight to
     # processing. Without it the loop crashes with InvalidTransitionError on the pinned bug.
+    # error → processing: retry bypass — a fresh-session restart (context overflow,
+    # tool-not-enabled) resumes the SAME task without going through triage, so
+    # reopen_snapshot_for_retry must be able to re-open a card its watchdog just flagged.
     TRANSITIONS = {
       "starting"   => %w[triage processing waiting error],
       "triage"     => %w[processing waiting triage error],
@@ -56,7 +59,7 @@ module McptaskRunner
       "frozen"     => %w[processing triage error closed pending],
       "pending"    => %w[processing triage error closed frozen],
       "finished"   => %w[closed waiting triage processing],
-      "error"      => %w[closed triage],
+      "error"      => %w[closed triage processing],
       "closed"     => []
     }.freeze
 

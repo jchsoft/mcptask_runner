@@ -27,6 +27,41 @@ class ClaudeCodeBaseContextOverflowTest < Minitest::Test
     assert_equal 12_345, killed_pid, 'must SIGTERM subprocess so stdout pipe closes'
   end
 
+  # Regression (mcptask #11358): the overflow watchdog used to leave the snapshot at "processing",
+  # so finalize_streaming read the killed attempt as a clean completion and flipped the web card
+  # Processing → Finished. mcptask.online reaped the card 5 min later while handle_context_overflow
+  # was already running a fresh restart that kept working for another 20+ minutes.
+  def test_check_for_context_overflow_emits_error_snapshot
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+
+    emitted = []
+    McptaskRunner::EventStream.stub(:emit_snapshot, ->(snapshot, **_kw) { emitted << snapshot }) do
+      base.stub(:kill_process, ->(_pid) { }) do
+        base.send(:check_for_context_overflow, '[Claude] Prompt is too long')
+      end
+    end
+
+    assert_equal 'error', builder.status, 'snapshot status must be :error so finalize_streaming skips :finished override'
+    refute_empty emitted, 'must emit at least one snapshot via EventStream'
+    assert_equal 'error', emitted.last[:status]
+    assert_match(/Context overflow/, emitted.last[:error_message])
+  end
+
+  # The killed attempt must stay :error all the way through stream teardown — finalize_streaming
+  # only re-flags "processing"/"pending", never a watchdog verdict.
+  def test_finalize_streaming_keeps_error_status_after_overflow
+    base = McptaskRunner::ClaudeCodeBase.new
+    builder = base.instance_variable_get(:@snapshot_builder)
+    base.stub(:kill_process, ->(_pid) { }) do
+      base.send(:check_for_context_overflow, 'Prompt is too long')
+    end
+
+    base.send(:finalize_streaming, Process.clock_gettime(Process::CLOCK_MONOTONIC))
+
+    assert_equal 'error', builder.status, 'finalize_streaming must not resurrect an overflow-killed attempt as :finished'
+  end
+
   def test_check_for_context_overflow_no_kill_when_pattern_absent
     base = McptaskRunner::ClaudeCodeBase.new
     base.instance_variable_get(:@state).child_pid = 12_345
