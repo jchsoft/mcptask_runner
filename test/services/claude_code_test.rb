@@ -2,6 +2,26 @@
 
 require 'test_helper'
 
+# Every prompt that loads a piece must name ReadMcpResourceTool as the only transport (REST never)
+# and then branch on the host: no ToolSearch tool → call it directly; ToolSearch present and the
+# tool merely named → ToolSearch first. Both refutes guard a real regression, one per direction:
+# an unconditional ToolSearch-first order sent a qwen child improvising curl, and an unconditional
+# direct-first headline sends a deferring host into check_for_tool_not_enabled.
+module McpFetchPromptAssertions
+  def assert_host_aware_mcp_fetch(instructions)
+    assert_includes instructions, 'the MCP route, never REST'
+    assert_includes instructions, 'NO ToolSearch tool'
+    assert_includes instructions, 'CALL IT DIRECTLY, no lookup step'
+    assert_includes instructions, 'select:ReadMcpResourceTool'
+    assert_includes instructions, 'NEVER Bash/curl/Net::HTTP'
+    refute_includes instructions, 'DEFERRED tool: FIRST call ToolSearch'
+    refute_includes instructions, 'the FIRST route you try'
+    refute_includes instructions, 'exists but is not enabled in this context',
+                    'Prompt must not carry the exact marker StreamProcessing#tool_not_enabled_error? ' \
+                    'matches — an is_error tool_result echoing this prompt would kill its own session'
+  end
+end
+
 class ClaudeCodeHonestTest < Minitest::Test
   def test_honest_responds_to_run
     honest = McptaskRunner::ClaudeCode::Honest.new
@@ -451,6 +471,8 @@ class ClaudeCodeAutoSquashBaseTest < Minitest::Test
 end
 
 class ClaudeCodeStoryAutoSquashTest < Minitest::Test
+  include McpFetchPromptAssertions
+
   def test_story_auto_squash_responds_to_run
     story_auto_squash = McptaskRunner::ClaudeCode::StoryAutoSquash.new(story_id: 123, task_id: 456)
     assert_respond_to story_auto_squash, :run
@@ -490,8 +512,7 @@ class ClaudeCodeStoryAutoSquashTest < Minitest::Test
     assert_includes instructions, 'subtasks'
     assert_includes instructions, 'pre-selected by triage'
     assert_includes instructions, 'mcptask://pieces/jchsoft/123'
-    assert_includes instructions, 'DEFERRED tool'
-    assert_includes instructions, 'select:ReadMcpResourceTool'
+    assert_host_aware_mcp_fetch instructions
   end
 
   def test_story_auto_squash_instructions_includes_workflow_steps
@@ -573,6 +594,8 @@ class ClaudeCodeStoryAutoSquashTest < Minitest::Test
 end
 
 class ClaudeCodeTodayAutoSquashTest < Minitest::Test
+  include McpFetchPromptAssertions
+
   def test_today_auto_squash_responds_to_run
     File.stub :exist?, true do
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
@@ -607,21 +630,19 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
     end
   end
 
-  # ReadMcpResourceTool is a deferred tool: a direct call is rejected as
-  # "exists but is not enabled in this context", and the runner's
-  # tool-not-enabled watchdog (stream_processing.rb#tool_not_enabled_error?)
-  # mistakes that for an MCP-server disconnect and kills the session. The
-  # TodayAutoSquash prompt fires the fetch alongside `git checkout main` in
-  # turn 1, so the model commits to the call before it reflects — unlike Triage,
-  # whose single-action step 1 lets the model ToolSearch first. Make the
-  # ToolSearch-first step explicit in the prompt and guard it here.
-  def test_today_auto_squash_instructions_tells_model_to_load_deferred_readmcpresource_tool
+  # Reaching ReadMcpResourceTool is HOST-DEPENDENT (same split the triage prompts handle, see
+  # claude_code_triage_test.rb): with tool search on it is deferred and needs ToolSearch first; behind
+  # an ANTHROPIC_BASE_URL proxy there is no ToolSearch at all and the tool is already active. The old
+  # wording ordered ToolSearch FIRST and called a direct invocation fatal — on an ollama host a qwen
+  # child obeying it got "No such tool available: ToolSearch", improvised `curl /api/v1/pieces/<relative_id>`
+  # (403), and only then called ReadMcpResourceTool directly, which worked immediately. Flipping the
+  # order flat would just break the other host, so the prompt states the transport once and leaves the
+  # ORDER to a branch the child can decide for itself: does it have a ToolSearch tool at all.
+  def test_today_auto_squash_instructions_branches_the_mcp_fetch_route_on_the_host
     File.stub :exist?, true do
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
-        instructions = today_auto_squash.send(:build_instructions)
-        assert_includes instructions, 'DEFERRED tool'
-        assert_includes instructions, 'select:ReadMcpResourceTool'
+        assert_host_aware_mcp_fetch today_auto_squash.send(:build_instructions)
       end
     end
   end
@@ -1232,6 +1253,8 @@ class TimeAwarenessInstructionsTest < Minitest::Test
 end
 
 class ClaudeCodeTaskManualTest < Minitest::Test
+  include McpFetchPromptAssertions
+
   def test_task_manual_responds_to_run
     task_manual = McptaskRunner::ClaudeCode::TaskManual.new(task_id: 123)
     assert_respond_to task_manual, :run
@@ -1269,8 +1292,7 @@ class ClaudeCodeTaskManualTest < Minitest::Test
     instructions = task_manual.send(:build_instructions)
     assert_includes instructions, 'LOAD TASK'
     assert_includes instructions, 'TASKRUNNER_TASK_INFO'
-    assert_includes instructions, 'DEFERRED tool'
-    assert_includes instructions, 'select:ReadMcpResourceTool'
+    assert_host_aware_mcp_fetch instructions
   end
 
   def test_task_manual_instructions_includes_workflow_steps

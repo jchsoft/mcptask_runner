@@ -12,12 +12,49 @@ module McptaskRunner
       step_num < 10 ? '   ' : '    '
     end
 
+    # Canonical piece-fetch directive, shared by every step that loads a piece.
+    #
+    # Tool deferral is HOST-DEPENDENT, so the ROUTE to ReadMcpResourceTool cannot be stated flatly
+    # (same split Triage::Prompt::Base#tool_availability_note handles):
+    #   * native Anthropic host — tool search is on, the tool is DEFERRED (named in a reminder, no
+    #     schema). A direct call answers "exists but is not enabled in this context", which
+    #     StreamProcessing#check_for_tool_not_enabled treats as an MCP outage and kills the attempt.
+    #     ToolSearch must come first here.
+    #   * ANTHROPIC_BASE_URL proxy (ollama/qwen, see LauncherConfig) — there is no ToolSearch tool at
+    #     all and every MCP tool is already active. The old wording ordered ToolSearch FIRST
+    #     unconditionally, so a qwen child got "No such tool available: ToolSearch", then improvised
+    #     `curl /api/v1/pieces/<relative_id>` (403), and only then called ReadMcpResourceTool
+    #     directly — which worked on the first try. Two wasted turns and an invented HTTP route.
+    # The discriminator that holds on both hosts is whether ToolSearch itself exists, so the rule is
+    # phrased on that, not on "is the tool in my list" (a deferred tool IS named in the list).
+    #
+    # Which is also why the lead line says WHICH TOOL and WHICH TRANSPORT but never "call it first":
+    # ordering is exactly the host-dependent part. An earlier draft led with "DIRECT MCP call, the
+    # FIRST route you try" — a child that acts on that headline without reading the two sub-bullets
+    # commits to the direct call on a deferring host, which is the fatal path above. "DIRECT" was
+    # only ever meant as "MCP, not REST", so it is spelled that way now.
+    #
+    # The deferred branch quotes the marker SHORT ("not enabled in this context"), never the full
+    # 'exists but is not enabled in this context' StreamProcessing#tool_not_enabled_error? matches on:
+    # that detector still fires on an is_error tool_result echoing the phrase, so a failing command
+    # that happens to print this prompt back (a red `bin/ci`, a diff) would kill its own session.
+    #
+    # REST is never a fallback: Api::PiecesController#show does `Piece.find(params[:id])` — an
+    # INTERNAL id — so a relative_id there answers a foreign piece or 403 forbidden.
+    def mcp_fetch_lines(indent, uri)
+      [
+        %(#{indent}- FETCH IT WITH ReadMcpResourceTool: server="mcptask-online", uri="#{uri}" — the MCP route, never REST. HOW you reach that tool depends on the host, so pick your branch BEFORE calling:),
+        %(#{indent}  - You have NO ToolSearch tool → this host defers nothing, ReadMcpResourceTool is live: CALL IT DIRECTLY, no lookup step.),
+        %(#{indent}  - You HAVE ToolSearch and ReadMcpResourceTool is only NAMED (no schema loaded) → it is DEFERRED, which is NOT missing and NOT an MCP failure: ToolSearch query "select:ReadMcpResourceTool" FIRST, THEN invoke it. Calling it directly here answers "not enabled in this context" and kills the attempt.),
+        %(#{indent}- NEVER Bash/curl/Net::HTTP, NEVER the /mcptask-read skill: REST takes the INTERNAL id, so a relative_id there returns the WRONG piece or 403. "Tool not available" is never a reason to improvise a fetch route or to fail.)
+      ]
+    end
+
     def task_fetch_step(step_num:, fetch_url:)
       s = step_indent(step_num)
       <<~STEP.strip
         #{step_num}. TASK FETCH:
-        #{s}- ReadMcpResourceTool is a DEFERRED tool: FIRST call ToolSearch with query "select:ReadMcpResourceTool" to load its schema, THEN invoke it. A direct call fails with "not enabled in this context" and kills the session.
-        #{s}- INVOKE ReadMcpResourceTool with server="mcptask-online", uri="#{fetch_url}" — DIRECT MCP call. Do NOT use /mcptask-read skill (unreliable in this context). NEVER Bash/curl/Net::HTTP — API uses internal id, returns WRONG piece.
+        #{mcp_fetch_lines(s, fetch_url).join("\n")}
         #{s}- No tasks → STOP, status "no_more_tasks"
         #{s}- Verify not started/completed
         #{s}- Output:
@@ -33,8 +70,7 @@ module McptaskRunner
       s = step_indent(step_num)
       <<~STEP.strip
         #{step_num}. LOAD TASK:
-        #{s}- ReadMcpResourceTool is a DEFERRED tool: FIRST call ToolSearch with query "select:ReadMcpResourceTool" to load its schema, THEN invoke it. A direct call fails with "not enabled in this context" and kills the session.
-        #{s}- INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{task_id}" — DIRECT MCP call. Do NOT use /mcptask-read skill. NEVER Bash/curl/Net::HTTP.
+        #{mcp_fetch_lines(s, "mcptask://pieces/#{account_code}/#{task_id}").join("\n")}
         #{s}- Output:
         #{s}  TASKRUNNER_TASK_INFO:
         #{s}  ID: <relative_id>
@@ -52,8 +88,7 @@ module McptaskRunner
       else
         <<~STEP.chomp
           1. LOAD STORY:
-             - ReadMcpResourceTool is a DEFERRED tool: FIRST call ToolSearch with query "select:ReadMcpResourceTool" to load its schema, THEN invoke it. A direct call fails with "not enabled in this context" and kills the session.
-             - INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{story_id}" — DIRECT MCP. Do NOT use /mcptask-read skill.
+          #{mcp_fetch_lines('   ', "mcptask://pieces/#{account_code}/#{story_id}").join("\n")}
              - Review name, description, subtasks
              - Note completed subtasks for context
              - Work on task ##{task_id} (pre-selected by triage)
@@ -64,8 +99,7 @@ module McptaskRunner
         #{story_step}
 
         2. LOAD TASK:
-           - ReadMcpResourceTool is a DEFERRED tool: FIRST call ToolSearch with query "select:ReadMcpResourceTool" to load its schema, THEN invoke it. A direct call fails with "not enabled in this context" and kills the session.
-           - INVOKE ReadMcpResourceTool with server="mcptask-online", uri="mcptask://pieces/#{account_code}/#{task_id}" — DIRECT MCP. Do NOT use /mcptask-read skill. NEVER Bash/curl/Net::HTTP.
+        #{mcp_fetch_lines('   ', "mcptask://pieces/#{account_code}/#{task_id}").join("\n")}
            - progress > 0: CONTINUATION → skip steps 3-4, go to step 5
            - progress = 0: proceed normally
            - Output:

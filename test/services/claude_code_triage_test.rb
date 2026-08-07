@@ -336,6 +336,36 @@ account_code: `jchsoft`' do
     assert_tool_availability_note McptaskRunner::ClaudeCode::Triage.new(story_id: 8965).send(:build_instructions)
   end
 
+  # The stream is the only proof triage really looked the piece up: on projectoid_ii / qwen3.5 a
+  # triage child emitted a well-formed TASKRUNNER_RESULT after 12 stream events and zero tool calls.
+  # A thinking block NAMING the tool is not evidence — only a tool_use of it is.
+  def test_fetch_observed_true_when_stream_carries_a_read_mcp_resource_tool_use
+    assert fetch_observed_for(%q({"type":"assistant","message":{"content":[{"type":"tool_use","id":"x","name":"ReadMcpResourceTool","input":{"server":"mcptask-online"}}]}}))
+  end
+
+  def test_fetch_observed_true_for_mcptask_piece_tools
+    assert fetch_observed_for(%q({"content":[{"type":"tool_use","name":"mcp__mcptask-online__GetPieceTool"}]}))
+  end
+
+  def test_fetch_observed_false_when_child_only_talks_about_the_tool
+    refute fetch_observed_for(%q({"type":"assistant","message":{"content":[{"type":"thinking","thinking":"I need to fetch the next task with ReadMcpResourceTool from the MCP server."}]}}))
+  end
+
+  def test_fetch_observed_false_for_an_empty_stream
+    refute fetch_observed_for("")
+  end
+
+  def test_run_stamps_fetch_observed_onto_the_result
+    triage = McptaskRunner::ClaudeCode::Triage.new
+    triage.stub(:run_with_retry, { "status" => "success", "task_id" => 11_360 }) do
+      triage.stub(:report_runner_failure, nil) do
+        triage.stub(:finalize_task_handoff, nil) do
+          assert_equal false, triage.run["fetch_observed"]
+        end
+      end
+    end
+  end
+
   private
 
   def assert_tool_availability_note(instructions)
@@ -344,5 +374,11 @@ account_code: `jchsoft`' do
     assert_includes instructions, 'select:ReadMcpResourceTool'
     assert_includes instructions, 'no ToolSearch tool'
     refute_includes instructions, 'every MCP tool (e.g. ReadMcpResourceTool) is DEFERRED'
+  end
+
+  def fetch_observed_for(stream)
+    triage = McptaskRunner::ClaudeCode::Triage.new
+    triage.instance_variable_set(:@accumulated_output, stream)
+    triage.send(:piece_fetch_observed?)
   end
 end

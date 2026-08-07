@@ -55,7 +55,7 @@ module McptaskRunner
           # a reason to fail: the prompt's "On MCP failure: STOP" must not read as an outage.
           def tool_availability_note
             <<~NOTE.strip
-              TOOL AVAILABILITY: when these instructions name a tool (e.g. ReadMcpResourceTool), FIRST look for it in your active tool list — if it is there, CALL IT DIRECTLY. Only if it is absent is it DEFERRED (schema not loaded yet), which is NOT missing and NOT an MCP failure: load it with ToolSearch query "select:<ToolName>" (e.g. "select:ReadMcpResourceTool"), THEN call it. If you have no ToolSearch tool, this host does not defer tools at all — re-read your tool list and call the named tool directly. NEVER substitute Bash for a tool you cannot find, and NEVER emit an error/failure status because a tool "isn't available".
+              TOOL AVAILABILITY: when these instructions name a tool (e.g. ReadMcpResourceTool), CALL IT DIRECTLY — that is the first and normally the only route. Two host shapes, decide by whether YOU have a ToolSearch tool: (a) no ToolSearch tool → this host defers nothing, the named tool is live, call it directly; (b) ToolSearch exists and the named tool is only NAMED somewhere without a schema → it is DEFERRED, which is NOT missing and NOT an MCP failure: load it with ToolSearch query "select:<ToolName>" (e.g. "select:ReadMcpResourceTool"), THEN call it. NEVER substitute Bash/curl for a tool you cannot find, and NEVER emit an error/failure status because a tool "isn't available".
             NOTE
           end
 
