@@ -2,6 +2,18 @@
 
 require 'test_helper'
 
+# Every prompt that loads a piece must order the fetch routes the way they actually succeed:
+# direct ReadMcpResourceTool call → ToolSearch only when the tool is absent → REST never.
+module McpFetchPromptAssertions
+  def assert_direct_mcp_call_first(instructions)
+    assert_includes instructions, 'DIRECT MCP call, the FIRST route you try'
+    assert_includes instructions, 'No ToolSearch tool on this host'
+    assert_includes instructions, 'select:ReadMcpResourceTool'
+    assert_includes instructions, 'NEVER Bash/curl/Net::HTTP'
+    refute_includes instructions, 'DEFERRED tool: FIRST call ToolSearch'
+  end
+end
+
 class ClaudeCodeHonestTest < Minitest::Test
   def test_honest_responds_to_run
     honest = McptaskRunner::ClaudeCode::Honest.new
@@ -451,6 +463,8 @@ class ClaudeCodeAutoSquashBaseTest < Minitest::Test
 end
 
 class ClaudeCodeStoryAutoSquashTest < Minitest::Test
+  include McpFetchPromptAssertions
+
   def test_story_auto_squash_responds_to_run
     story_auto_squash = McptaskRunner::ClaudeCode::StoryAutoSquash.new(story_id: 123, task_id: 456)
     assert_respond_to story_auto_squash, :run
@@ -490,8 +504,7 @@ class ClaudeCodeStoryAutoSquashTest < Minitest::Test
     assert_includes instructions, 'subtasks'
     assert_includes instructions, 'pre-selected by triage'
     assert_includes instructions, 'mcptask://pieces/jchsoft/123'
-    assert_includes instructions, 'DEFERRED tool'
-    assert_includes instructions, 'select:ReadMcpResourceTool'
+    assert_direct_mcp_call_first instructions
   end
 
   def test_story_auto_squash_instructions_includes_workflow_steps
@@ -573,6 +586,8 @@ class ClaudeCodeStoryAutoSquashTest < Minitest::Test
 end
 
 class ClaudeCodeTodayAutoSquashTest < Minitest::Test
+  include McpFetchPromptAssertions
+
   def test_today_auto_squash_responds_to_run
     File.stub :exist?, true do
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
@@ -607,21 +622,18 @@ class ClaudeCodeTodayAutoSquashTest < Minitest::Test
     end
   end
 
-  # ReadMcpResourceTool is a deferred tool: a direct call is rejected as
-  # "exists but is not enabled in this context", and the runner's
-  # tool-not-enabled watchdog (stream_processing.rb#tool_not_enabled_error?)
-  # mistakes that for an MCP-server disconnect and kills the session. The
-  # TodayAutoSquash prompt fires the fetch alongside `git checkout main` in
-  # turn 1, so the model commits to the call before it reflects — unlike Triage,
-  # whose single-action step 1 lets the model ToolSearch first. Make the
-  # ToolSearch-first step explicit in the prompt and guard it here.
-  def test_today_auto_squash_instructions_tells_model_to_load_deferred_readmcpresource_tool
+  # Reaching ReadMcpResourceTool is HOST-DEPENDENT (same split the triage prompts handle, see
+  # claude_code_triage_test.rb): with tool search on it is deferred and needs ToolSearch first; behind
+  # an ANTHROPIC_BASE_URL proxy there is no ToolSearch at all and the tool is already active. The old
+  # wording ordered ToolSearch FIRST and called a direct invocation fatal — on an ollama host a qwen
+  # child obeying it got "No such tool available: ToolSearch", improvised `curl /api/v1/pieces/<relative_id>`
+  # (403), and only then called ReadMcpResourceTool directly, which worked immediately. So the prompt
+  # must lead with the direct call and keep ToolSearch as the fallback.
+  def test_today_auto_squash_instructions_tells_model_to_call_readmcpresource_tool_directly_first
     File.stub :exist?, true do
       File.stub :read, "project_relative_id=99\naccount_code: `jchsoft`" do
         today_auto_squash = McptaskRunner::ClaudeCode::TodayAutoSquash.new
-        instructions = today_auto_squash.send(:build_instructions)
-        assert_includes instructions, 'DEFERRED tool'
-        assert_includes instructions, 'select:ReadMcpResourceTool'
+        assert_direct_mcp_call_first today_auto_squash.send(:build_instructions)
       end
     end
   end
@@ -1232,6 +1244,8 @@ class TimeAwarenessInstructionsTest < Minitest::Test
 end
 
 class ClaudeCodeTaskManualTest < Minitest::Test
+  include McpFetchPromptAssertions
+
   def test_task_manual_responds_to_run
     task_manual = McptaskRunner::ClaudeCode::TaskManual.new(task_id: 123)
     assert_respond_to task_manual, :run
@@ -1269,8 +1283,7 @@ class ClaudeCodeTaskManualTest < Minitest::Test
     instructions = task_manual.send(:build_instructions)
     assert_includes instructions, 'LOAD TASK'
     assert_includes instructions, 'TASKRUNNER_TASK_INFO'
-    assert_includes instructions, 'DEFERRED tool'
-    assert_includes instructions, 'select:ReadMcpResourceTool'
+    assert_direct_mcp_call_first instructions
   end
 
   def test_task_manual_instructions_includes_workflow_steps

@@ -452,4 +452,84 @@ class WorkLoopTriageTest < Minitest::Test
       end
     end
   end
+  # Fabricated triage pick (projectoid_ii / qwen3.5, 2026-08-07): the child called NO tool and still
+  # answered a task_id — paired with a task_name from a different piece in a different project — and
+  # the runner branched for it. A pick with no piece fetch behind it must be discarded, retried once
+  # in a fresh triage session, then degraded to no_more_tasks so the waiting strategy re-triages.
+  def test_triage_pick_without_piece_fetch_is_discarded
+    triage_calls = 0
+    fabricating_mock = Object.new
+    fabricating_mock.define_singleton_method(:run) do
+      triage_calls += 1
+      { "status" => "success", "recommended_model" => "smart", "task_id" => 11_360,
+        "task_name" => "Implementovat zakladni strukturu a navigaci", "fetch_observed" => false }
+    end
+
+    executor_called = false
+    executor_mock = Object.new
+    executor_mock.define_singleton_method(:run) do
+      executor_called = true
+      { "status" => "success" }
+    end
+
+    McptaskRunner::ClaudeCode::Triage.stub(:new, fabricating_mock) do
+      McptaskRunner::ClaudeCode::Honest.stub(:new, executor_mock) do
+        loop_instance = McptaskRunner::WorkLoop.new
+        result = loop_instance.stub(:read_urgent_pin, nil) { loop_instance.execute(:once) }
+
+        assert_equal "no_more_tasks", result["status"]
+        assert_equal "triage_unverified", result["reason"]
+        assert_equal 2, triage_calls, "Unfetched pick must be retried once in a fresh triage session"
+        refute executor_called, "Runner must not work a task_id triage never looked up"
+      end
+    end
+  end
+
+  def test_triage_pick_with_piece_fetch_runs_normally
+    verified_mock = Object.new
+    def verified_mock.run
+      { "status" => "success", "recommended_model" => "smart", "task_id" => 11_360, "fetch_observed" => true,
+        "hours" => { "per_day" => 8, "task_estimated" => 1, "already_worked" => 0 } }
+    end
+
+    executor_kwargs = nil
+    executor_mock = Object.new
+    def executor_mock.run
+      { "status" => "success", "hours" => { "per_day" => 8, "task_estimated" => 1 } }
+    end
+
+    McptaskRunner::ClaudeCode::Triage.stub(:new, verified_mock) do
+      McptaskRunner::ClaudeCode::Honest.stub(:new, ->(**kwargs) { executor_kwargs = kwargs; executor_mock }) do
+        loop_instance = McptaskRunner::WorkLoop.new
+        loop_instance.stub(:read_urgent_pin, nil) { loop_instance.execute(:once) }
+      end
+    end
+
+    assert_equal 11_360, executor_kwargs[:task_id]
+  end
+
+  # A task_id the runner itself handed to triage (pinned bug, explicit --task) is trustworthy even
+  # when the child skipped the fetch — it was not invented, so the guard must not loop on it.
+  def test_supplied_task_id_survives_missing_piece_fetch
+    unfetched_mock = Object.new
+    def unfetched_mock.run
+      { "status" => "success", "recommended_model" => "smart", "task_id" => 777, "fetch_observed" => false,
+        "hours" => { "per_day" => 8, "task_estimated" => 1, "already_worked" => 0 } }
+    end
+
+    executor_kwargs = nil
+    executor_mock = Object.new
+    def executor_mock.run
+      { "status" => "success", "hours" => { "per_day" => 8, "task_estimated" => 1 } }
+    end
+
+    McptaskRunner::ClaudeCode::Triage.stub(:new, unfetched_mock) do
+      McptaskRunner::ClaudeCode::Honest.stub(:new, ->(**kwargs) { executor_kwargs = kwargs; executor_mock }) do
+        loop_instance = McptaskRunner::WorkLoop.new(task_id: 777)
+        loop_instance.stub(:read_urgent_pin, nil) { loop_instance.execute(:once) }
+      end
+    end
+
+    assert_equal 777, executor_kwargs[:task_id]
+  end
 end

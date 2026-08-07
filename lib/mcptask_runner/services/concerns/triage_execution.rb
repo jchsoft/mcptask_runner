@@ -58,7 +58,7 @@ module McptaskRunner
         @builder&.set_task(task_id: task_id_for_triage, task_name: TRIAGE_TASK_PLACEHOLDER)
         @builder&.set_status(:triage)
         EventStream.emit_snapshot(@builder.to_h, force: true) if @builder
-        triage_result = ClaudeCode::Triage.new(verbose: @verbose, task_id: task_id_for_triage, story_id: story_id_for_triage, snapshot_builder: @builder).run
+        triage_result = run_verified_triage(task_id: task_id_for_triage, story_id: story_id_for_triage)
 
         return triage_result if triage_result['status'] == 'no_more_tasks'
 
@@ -89,6 +89,34 @@ module McptaskRunner
 
         execute_with_triage(executor_class, triaged_task_id, model_override, resuming,
                             triage_result: triage_result, **kwargs)
+      end
+
+      # A weak model can emit a syntactically perfect TASKRUNNER_RESULT for a task it never fetched.
+      # Seen on projectoid_ii / qwen3.5 on 2026-08-07: triage called NO tool at all (12 stream
+      # events, one thinking line) and answered task_id 11360 paired with a task_name belonging to a
+      # different piece in a different project — the runner then branched and started editing files
+      # for that made-up pairing. The stream is the only proof of a real fetch (Triage stamps
+      # 'fetch_observed'), so an unfetched pick is discarded and triage re-run in a fresh session.
+      # Still unfetched → answer no_more_tasks: the waiting strategy re-triages in minutes, which is
+      # strictly better than working an id nobody looked up. Only a pick triage INVENTED is checked;
+      # a task_id we handed in (pinned bug, explicit --task) is trustworthy by construction.
+      def run_verified_triage(task_id:, story_id:)
+        2.times do |attempt|
+          result = ClaudeCode::Triage.new(verbose: @verbose, task_id: task_id, story_id: story_id, snapshot_builder: @builder).run
+          return result unless unverified_task_pick?(result, task_id)
+
+          Logger.warn("[WorkLoop] Triage picked task ##{result['task_id']} (#{result['task_name'].inspect}) " \
+                      "without fetching any piece — made-up pick, discarding (attempt #{attempt + 1}/2)")
+        end
+
+        { 'status' => 'no_more_tasks', 'reason' => 'triage_unverified' }
+      end
+
+      def unverified_task_pick?(result, supplied_task_id)
+        return false unless result.is_a?(Hash) && result['fetch_observed'] == false
+
+        picked = result['task_id']
+        !picked.nil? && picked.to_s != supplied_task_id.to_s
       end
 
       # Bypass triage whenever an urgent pin is active. Pinned bug is hardcoded as the next
