@@ -1,9 +1,10 @@
 # Runner Snapshot JSON Contract
 
-**Schema version:** `1`
+**Schema version:** `3`
 
 Shared contract between `mcptask_runner` (producer) and `mcptask.online` (consumer).
-Neither side is modified without bumping `schema_version`.
+Neither side is modified without bumping `schema_version` — see [Changelog](#changelog)
+for the fields that shipped without a bump anyway.
 
 ---
 
@@ -19,14 +20,18 @@ No individual events are streamed — only the snapshot hash.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "session_id":     "<uuid>",
   "machine_id":     "<hostname>",
+  "project_name":   "McpTask rails runner",
   "task_id":        1234,
   "task_name":      "Fix login validation",
   "status":         "processing",
   "model":          "claude-sonnet-4-6",
   "active_actions": [ ... ],
+  "thinking":       null,
+  "message":        null,
+  "todo_list":      [ ... ],
   "last_activity_at": "2026-05-18T10:30:00.123Z",
   "error_message":  null,
   "quota": {
@@ -43,14 +48,18 @@ No individual events are streamed — only the snapshot hash.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `schema_version` | `Integer` | always | Server rejects unknown versions with a loud error. Current: `1`. |
+| `schema_version` | `Integer` | always | Server rejects unknown versions with a loud error. Current: `3`. |
 | `session_id` | `String (UUID)` | always | Stable for the lifetime of one `EventStream` session. |
 | `machine_id` | `String` | always | Hostname of the runner machine (`ENV["HOSTNAME"]` or `hostname`). |
+| `project_name` | `String \| null` | always | Human-readable mcptask.online project name (resolved from `CLAUDE.md`). `null` if not resolved. Lets the web UI disambiguate runners on multi-project dashboards. |
 | `task_id` | `Integer \| null` | always | `mcptask.online` piece `relative_id`. `null` during `starting`/`triage` before task is selected. |
 | `task_name` | `String \| null` | always | Human-readable name fetched from triage result or piece lookup. `null` when `task_id` is `null`. |
 | `status` | `String (enum)` | always | See [Status Enum](#status-enum) below. |
 | `model` | `String \| null` | always | Claude model identifier (e.g. `"claude-sonnet-4-6"`). `null` before first executor starts. |
 | `active_actions` | `Array<Action>` | always | Currently in-flight tool calls. Empty array when no tools running. See [Action Object](#action-object). |
+| `thinking` | `String \| null` | always | Latest Claude thinking block, truncated to 500 chars. Self-expires to `null` after 30s of quiet so a stale thought never lingers. |
+| `message` | `String \| null` | always | Latest non-thinking, non-tool text Claude said between tool calls, truncated to 500 chars. Self-expires to `null` after 60s of quiet. |
+| `todo_list` | `Array<Todo>` | always | Mirror of the current `TodoWrite` list. Empty array when no todos. Each entry: `{ content: String, status: "pending" \| "in_progress" \| "completed", activeForm: String }`. |
 | `last_activity_at` | `String (ISO 8601)` | always | Wall-clock timestamp of last stream event received from Claude. |
 | `error_message` | `String \| null` | always | Non-null only when `status ∈ {stalled, frozen, error}`. |
 | `quota` | `Object \| null` | when available | Nil when runner has no quota data (e.g. triage-only executors). |
@@ -64,6 +73,8 @@ No individual events are streamed — only the snapshot hash.
 >
 > **No action history.** `active_actions` contains only currently running tools.
 > Post-mortem of past tool calls lives in the local Claude session log, not the server DB.
+> The last few *completed* actions on this task are kept runner-side (`SnapshotBuilder#recent_actions`,
+> capped at 3) as a fresh-session-restart handoff hint — they are not part of the emitted snapshot.
 
 ---
 
@@ -152,11 +163,12 @@ Represents a single in-flight Claude tool call.
 
 ```json
 {
-  "tool_id":   "toolu_01XYZ",
-  "name":      "Bash",
-  "summary":   "bin/rails test test/models/user_test.rb",
-  "started_at": "2026-05-18T10:29:45.000Z",
-  "elapsed_s": 12
+  "tool_id":     "toolu_01XYZ",
+  "name":        "Bash",
+  "summary":     "bin/rails test test/models/user_test.rb",
+  "description": null,
+  "started_at":  "2026-05-18T10:29:45.000Z",
+  "elapsed_s":   12
 }
 ```
 
@@ -165,6 +177,7 @@ Represents a single in-flight Claude tool call.
 | `tool_id` | `String` | Claude tool use ID from stream JSON. |
 | `name` | `String` | Tool name (e.g. `"Bash"`, `"Edit"`, `"Grep"`). |
 | `summary` | `String` | Human-readable one-liner derived from tool input (truncated to 120 chars). |
+| `description` | `String \| null` | Optional longer description of the tool call (truncated to 200 chars), when the tool call supplies one. `null` otherwise. |
 | `started_at` | `String (ISO 8601)` | When the tool call began. |
 | `elapsed_s` | `Integer` | Seconds elapsed since `started_at`, recomputed each snapshot. |
 
@@ -176,14 +189,18 @@ Represents a single in-flight Claude tool call.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "machine_id": "karelmracek-mbp",
+  "project_name": "McpTask rails runner",
   "task_id": null,
   "task_name": null,
   "status": "starting",
   "model": null,
   "active_actions": [],
+  "thinking": null,
+  "message": null,
+  "todo_list": [],
   "last_activity_at": "2026-05-18T10:00:00.000Z",
   "error_message": null,
   "quota": null,
@@ -197,9 +214,10 @@ Represents a single in-flight Claude tool call.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "machine_id": "karelmracek-mbp",
+  "project_name": "McpTask rails runner",
   "task_id": null,
   "task_name": null,
   "status": "triage",
@@ -209,10 +227,14 @@ Represents a single in-flight Claude tool call.
       "tool_id": "toolu_01TRIAGE",
       "name": "mcp__mcptask-online__ReadPieceTool",
       "summary": "pieces/jchsoft/@next?project_relative_id=7",
+      "description": null,
       "started_at": "2026-05-18T10:00:02.000Z",
       "elapsed_s": 3
     }
   ],
+  "thinking": null,
+  "message": null,
+  "todo_list": [],
   "last_activity_at": "2026-05-18T10:00:05.000Z",
   "error_message": null,
   "quota": {
@@ -229,9 +251,10 @@ Represents a single in-flight Claude tool call.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "machine_id": "karelmracek-mbp",
+  "project_name": "McpTask rails runner",
   "task_id": 10356,
   "task_name": "Define runner snapshot JSON contract",
   "status": "processing",
@@ -241,9 +264,16 @@ Represents a single in-flight Claude tool call.
       "tool_id": "toolu_01BASH",
       "name": "Bash",
       "summary": "bin/rails test test/system/runner_sessions_test.rb",
+      "description": null,
       "started_at": "2026-05-18T10:05:00.000Z",
       "elapsed_s": 47
     }
+  ],
+  "thinking": "Checking whether the system test covers the closed-row fade-out...",
+  "message": null,
+  "todo_list": [
+    { "content": "Add schema_version to snapshot", "status": "completed", "activeForm": "Adding schema_version to snapshot" },
+    { "content": "Write system test for Turbo morph", "status": "in_progress", "activeForm": "Writing system test for Turbo morph" }
   ],
   "last_activity_at": "2026-05-18T10:05:47.000Z",
   "error_message": null,
@@ -261,14 +291,18 @@ Represents a single in-flight Claude tool call.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "machine_id": "karelmracek-mbp",
+  "project_name": "McpTask rails runner",
   "task_id": 10356,
   "task_name": "Define runner snapshot JSON contract",
   "status": "waiting",
   "model": "claude-sonnet-4-6",
   "active_actions": [],
+  "thinking": null,
+  "message": null,
+  "todo_list": [],
   "last_activity_at": "2026-05-18T10:20:00.000Z",
   "error_message": null,
   "quota": {
@@ -285,14 +319,18 @@ Represents a single in-flight Claude tool call.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "machine_id": "karelmracek-mbp",
+  "project_name": "McpTask rails runner",
   "task_id": 10356,
   "task_name": "Define runner snapshot JSON contract",
   "status": "finished",
   "model": "claude-sonnet-4-6",
   "active_actions": [],
+  "thinking": null,
+  "message": null,
+  "todo_list": [],
   "last_activity_at": "2026-05-18T10:22:00.000Z",
   "error_message": null,
   "quota": {
@@ -309,14 +347,18 @@ Represents a single in-flight Claude tool call.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "machine_id": "karelmracek-mbp",
+  "project_name": "McpTask rails runner",
   "task_id": 10356,
   "task_name": "Define runner snapshot JSON contract",
   "status": "stalled",
   "model": "claude-sonnet-4-6",
   "active_actions": [],
+  "thinking": null,
+  "message": null,
+  "todo_list": [],
   "last_activity_at": "2026-05-18T10:15:00.000Z",
   "error_message": "Stall detected: reason=edit_failure_streak signature=Edit:SAME_FILE count=5",
   "quota": {
@@ -333,9 +375,10 @@ Represents a single in-flight Claude tool call.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "machine_id": "karelmracek-mbp",
+  "project_name": "McpTask rails runner",
   "task_id": 10356,
   "task_name": "Define runner snapshot JSON contract",
   "status": "frozen",
@@ -345,10 +388,14 @@ Represents a single in-flight Claude tool call.
       "tool_id": "toolu_01STUCK",
       "name": "Bash",
       "summary": "bin/rails test:system",
+      "description": null,
       "started_at": "2026-05-18T10:10:00.000Z",
       "elapsed_s": 3600
     }
   ],
+  "thinking": null,
+  "message": null,
+  "todo_list": [],
   "last_activity_at": "2026-05-18T10:10:00.000Z",
   "error_message": "No snapshot update for 10 minutes — runner may be dead",
   "quota": {
@@ -368,14 +415,18 @@ Represents a single in-flight Claude tool call.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "machine_id": "karelmracek-mbp",
+  "project_name": "McpTask rails runner",
   "task_id": 10356,
   "task_name": "Define runner snapshot JSON contract",
   "status": "error",
   "model": "claude-sonnet-4-6",
   "active_actions": [],
+  "thinking": null,
+  "message": null,
+  "todo_list": [],
   "last_activity_at": "2026-05-18T10:18:00.000Z",
   "error_message": "ContextOverflowError: Prompt is too long",
   "quota": {
@@ -392,14 +443,18 @@ Represents a single in-flight Claude tool call.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "session_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "machine_id": "karelmracek-mbp",
+  "project_name": "McpTask rails runner",
   "task_id": 10356,
   "task_name": "Define runner snapshot JSON contract",
   "status": "closed",
   "model": "claude-sonnet-4-6",
   "active_actions": [],
+  "thinking": null,
+  "message": null,
+  "todo_list": [],
   "last_activity_at": "2026-05-18T10:22:00.000Z",
   "error_message": null,
   "quota": {
@@ -433,3 +488,28 @@ Represents a single in-flight Claude tool call.
 3. Throttled to max 2 Hz at the `EventStream` layer to avoid flooding the ActionCable connection.
 4. `active_actions` built from current `@active_tool_calls` hash; `elapsed_s` computed at snapshot build time.
 5. `last_activity_at` derived from monotonic clock converted to wall-clock ISO 8601.
+
+---
+
+## Changelog
+
+| Version | Added | Notes |
+|---------|-------|-------|
+| `1` | `schema_version`, `session_id`, `machine_id`, `task_id`, `task_name`, `status`, `model`, `active_actions` (`tool_id`, `name`, `summary`, `started_at`, `elapsed_s`), `last_activity_at`, `error_message`, `quota`, `closed_at`, `ttl_seconds`, `updated_at` | Initial contract (#10358). |
+| `2` | `thinking`, `active_actions[].description` | Surfaces Claude's current thinking block and an optional longer per-tool description. |
+| `3` | `project_name` | Human-readable project name for multi-project dashboards. |
+
+Two fields shipped as backwards-compatible additions **without** a version bump — a consumer that
+ignores unknown keys already handles them correctly, but they are called out here so a
+version-pinned consumer knows what it silently misses:
+
+- `todo_list` (`Array<Todo>`, always present, empty array when no todos) — mirror of the current
+  `TodoWrite` list. Added under `schema_version 1`.
+- `message` (`String | null`) — latest non-thinking, non-tool text Claude said between tool calls.
+  Added under `schema_version 2`.
+
+A consumer pinned to `schema_version 1` receives `thinking`, `active_actions[].description`,
+`todo_list`, `message`, and `project_name` in every payload emitted by a current runner — it just
+does not know to expect them, since the runner does not gate emission on the consumer's declared
+version. Rely on the version bump for *breaking* changes; treat any key not in your version's table
+as optional and ignore it.
