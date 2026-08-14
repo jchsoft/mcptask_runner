@@ -283,6 +283,20 @@ class SnapshotBuilderTest < Minitest::Test
     assert_equal "processing", @builder.to_h[:status]
   end
 
+  # Same bypass one step earlier: the runner backs off between attempts, and the card has to be
+  # able to say "waiting" while it does. Left on :error it reports a standing failure for the
+  # whole wait — up to ~55 minutes of cumulative back-off on a 529 — while the run is in fact
+  # being recovered.
+  def test_valid_transition_error_to_waiting_backoff
+    @builder.set_status("triage")
+    @builder.set_status("processing")
+    @builder.set_status("error", error_message: "Tool not enabled")
+
+    @builder.set_status("waiting")
+
+    assert_equal "waiting", @builder.to_h[:status]
+  end
+
   def test_invalid_transition_raises
     assert_raises(McptaskRunner::InvalidTransitionError) do
       @builder.set_status("finished") # starting → finished is invalid

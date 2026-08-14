@@ -50,6 +50,10 @@ module McptaskRunner
     # error → processing: retry bypass — a fresh-session restart (context overflow,
     # tool-not-enabled) resumes the SAME task without going through triage, so
     # reopen_snapshot_for_retry must be able to re-open a card its watchdog just flagged.
+    # error → waiting: the same bypass one step earlier. Between attempts the run is not over,
+    # it is backing off, and a card left on "error" for the whole wait says a failure is
+    # standing when it is in fact being recovered from. The attempt that follows re-opens it
+    # (waiting → processing), which the table already allows.
     TRANSITIONS = {
       "starting"   => %w[triage processing waiting error],
       "triage"     => %w[processing waiting triage error],
@@ -59,7 +63,7 @@ module McptaskRunner
       "frozen"     => %w[processing triage error closed pending],
       "pending"    => %w[processing triage error closed frozen],
       "finished"   => %w[closed waiting triage processing],
-      "error"      => %w[closed triage processing],
+      "error"      => %w[closed triage processing waiting],
       "closed"     => []
     }.freeze
 
