@@ -1,5 +1,26 @@
 # mcptask_runner
 
+> **Retired — use [mcptask-rails-runner](https://github.com/jchsoft/mcptask-rails-runner) instead.**
+>
+> The runner was rewritten in Go. The replacement gem ships that binary and
+> keeps every rake task under the same name, so migrating is one Gemfile line:
+>
+> ```diff
+> - gem "mcptask_runner", git: "git@github.com:jchsoft/mcptask_runner.git"
+> + gem "mcptask-rails-runner"
+> ```
+>
+> Then `bundle install` and `FORCE=1 bundle exec rake mcptask_runner:install`.
+> Your `config/mcptask_runner.yml`, `.mcp.json` and `.claude/` are read as they
+> are. What you gain: Linux and Windows hosts, a scheduled job that needs
+> neither bundler nor an intact Gemfile at 08:00, and the fixes listed under
+> "Parity with the Ruby gem" in the Go repository's README — places where this
+> implementation is simply wrong.
+>
+> This repository lives on for two reasons only: critical fixes for hosts that
+> have not migrated yet, and as the reference implementation the Go runner's
+> conformance suite measures against. New behaviour is written in Go.
+
 A Ruby gem that adds rake tasks to a host Rails application for automated execution of [mcptask.online](https://mcptask.online) tasks by Claude Code. It orchestrates the full lifecycle of agentic work — discovering tasks, triaging complexity, selecting the right model tier, spawning Claude Code, supervising the run with a heartbeat watchdog and stall detector, guarding the daily quota, and (optionally) auto-merging the resulting PR after CI — while streaming a live snapshot of runner state back to mcptask.online and recording structured per-run logs for diagnosis.
 
 ## Requirements

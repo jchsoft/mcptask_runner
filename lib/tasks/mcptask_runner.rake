@@ -1,3 +1,28 @@
+# This gem is superseded by mcptask-rails-runner, which ships the Go runner.
+#
+# Printed here rather than on require, and only when one of these tasks is what
+# was actually asked for: Rails loads every railtie's rake file for `db:migrate`
+# too, and the conformance suite drives WorkLoop directly without going near
+# rake. On stderr, so nothing parsing stdout has to know about it.
+#
+# top_level_tasks is populated by Rake's init, which runs before the rake files
+# are loaded, so this reads the command that was actually typed.
+if defined?(Rake) && Rake.application.top_level_tasks.grep(/\Amcptask_runner:/).any?
+  warn <<~NOTICE
+    [McptaskRunner] This gem is retired. The Go runner is the runner now: it does
+    [McptaskRunner] everything this does, runs on Linux and Windows as well, and keeps
+    [McptaskRunner] bundler out of the scheduled job's path. Only critical fixes land
+    [McptaskRunner] here from now on.
+    [McptaskRunner]
+    [McptaskRunner]   -  gem "mcptask_runner", git: "git@github.com:jchsoft/mcptask_runner.git"
+    [McptaskRunner]   +  gem "mcptask-rails-runner"
+    [McptaskRunner]
+    [McptaskRunner] Then `bundle install` and `FORCE=1 bundle exec rake mcptask_runner:install`.
+    [McptaskRunner] Every rake task keeps its name; config/mcptask_runner.yml, .mcp.json
+    [McptaskRunner] and .claude/ are read as they are.
+  NOTICE
+end
+
 namespace :mcptask_runner do
   desc 'Report a bug: prompts for title/description, creates bug piece on mcptask.online with run log attached'
   task bug_report: :environment do
