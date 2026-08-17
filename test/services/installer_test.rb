@@ -161,8 +161,10 @@ class InstallerTest < Minitest::Test
     capture_io { build.call }
     content = script_content
     # active runner version is grepped from Gemfile.lock and echoed to the log on every run,
-    # so a self-update via bundle install is visible
-    assert_match 'mcptask_runner (', content
+    # so a self-update via bundle install is visible. The pattern matches both gem names:
+    # a host part-way through the migration to mcptask-rails-runner still runs this launcher,
+    # and one that knew only the legacy name logged an empty version there.
+    assert_match 'mcptask[_-](rails-)?runner \(', content
     assert_match '[launcher]', content
     assert_match 'runner now', content
   end
