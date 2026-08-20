@@ -29,7 +29,7 @@ The user message contains one of:
 
 - piece ID (`load piece 10464`, `piece #10464`, `task #10464`, `story #10464`)
 - next task request (`next task`, optionally with a project relative ID)
-- attachment download (`download attachment <id> from piece <piece_id>`) — you return the ready-to-run `curl` command; the **parent** runs it and Reads the file (see "Attachment download" below)
+- attachment download (`download attachment <id> from piece <piece_relative_id>`) — you return the ready-to-run `curl` command; the **parent** runs it and Reads the file (see "Attachment download" below)
 - user info (`who am I`)
 - list of pieces (`list pieces`, with optional page/size)
 
@@ -55,18 +55,25 @@ MCP server key in `.mcp.json` is `mcptask-online`, reached over Streamable HTTP 
 
 | Tool | Args | Purpose |
 |------|------|---------|
-| `mcp__mcptask-online__GetPieceTool` | `account_code*`, `piece_id*` | Piece details + attachments + subtasks |
+| `mcp__mcptask-online__GetPieceTool` | `account_code*`, `piece_relative_id*` | Piece details + attachments + subtasks |
 | `mcp__mcptask-online__GetNextTaskTool` | `account_code*`, `project_relative_id` | Next most urgent task |
 | `mcp__mcptask-online__ListPiecesTool` | `account_code*`, `page`, `size` | Paginated list of doable pieces |
-| `mcp__mcptask-online__GetPieceEffortsTool` | `account_code*`, `piece_id*` | Effort history (last 50) |
-| `mcp__mcptask-online__GetAttachmentTool` | `account_code*`, `piece_id*`, `attachment_id*` | Attachment metadata + direct download URL |
+| `mcp__mcptask-online__GetPieceEffortsTool` | `account_code*`, `piece_relative_id*` | Effort history (last 50) |
+| `mcp__mcptask-online__GetAttachmentTool` | `account_code*`, `piece_relative_id*`, `attachment_relative_id*` | Attachment metadata + direct download URL |
 | `mcp__mcptask-online__GetCurrentUserTool` | — | Current user info + working hours |
 | `mcp__mcptask-online__GetProjectTool` | `account_code*`, project ref | Project details |
 | `mcp__mcptask-online__GetProjectTreeTool` | `account_code*`, project ref | Project piece tree |
 | `mcp__mcptask-online__ListProjectsTool` | `account_code*` | List of projects |
 | `mcp__mcptask-online__GetUsageGuideTool` | — | Quick-start guide |
 
-`piece_id` is always the **`relative_id`**, never the internal `id`.
+`piece_relative_id` (and `attachment_relative_id`) always name the account-scoped
+relative id, never the internal `id` — the 2026-08-19 parameter rename put that
+word in the argument name itself so the two can't be confused again.
+
+> **Transitional note:** a server that predates the rename still expects the old
+> names, `piece_id` / `attachment_id`, for the same value. If a call is rejected
+> for an unrecognized argument, that's the sign — use the old name until the
+> server updates, then this note (and the old names) can go.
 
 ## Step 1: Load the tool schema
 
@@ -79,7 +86,7 @@ The `mcp__mcptask-online__*` tools are deferred — load the one you need (comma
 ## Step 2: Fetch via the tool (with retry for connection race)
 
 ```
-mcp__mcptask-online__GetPieceTool(account_code: "jchsoft", piece_id: 10464)
+mcp__mcptask-online__GetPieceTool(account_code: "jchsoft", piece_relative_id: 10464)
 ```
 
 **Connection race**: the server may still be in `pending` state at fork startup. The first call can fail with messages like "exists but is not enabled in this context" or "server not connected".
@@ -88,7 +95,7 @@ If the first call fails, do NOT give up and do NOT hallucinate. Retry up to 3 ti
 
 ```
 Bash(command: "sleep 3", description: "Wait for mcptask-online to connect")
-mcp__mcptask-online__GetPieceTool(account_code: "jchsoft", piece_id: 10464)
+mcp__mcptask-online__GetPieceTool(account_code: "jchsoft", piece_relative_id: 10464)
 ```
 
 You ARE the forked Haiku context that owns the MCP connection. Do not return text like "I'm an agent without MCP access" — that is wrong. Either the tool eventually succeeds, or it fails after 3 retries and you return the literal error string from the last attempt (see Error handling below).

@@ -32,7 +32,7 @@ MCP server key in `.mcp.json` is `mcptask-online`. Tool prefix: `mcp__mcptask-on
 `name` and `description` must be in English regardless of conversation language, because mcptask.online is read by mixed-language collaborators and the backend search/index is tuned for English.
 
 Required: `account_code`, `name`, `task_type_code` (`task`, `story`, `recurent`, `bug`), `project_relative_id`, `scrum_point_code`.
-Optional: `description`, `priority`, `parent_id` (for subtasks), `duration_best_hours`.
+Optional: `description`, `priority`, `parent_relative_id` (for subtasks), `duration_best_hours`.
 
 `scrum_point_code` (difficulty) is **required** — omitting it fails validation: "Trvání optimisticky/pesimisticky není v seznamu povolených hodnot". Pick by type:
 
@@ -51,7 +51,7 @@ Log multiple times during a task, not only at the end. Stakeholders watching the
 | 90% | After final completion (leave room for follow-ups) |
 | 100% | Only when truly done, including the commit |
 
-Required arguments: `account_code`, `task_id`, `description`, `progress_percent`, `duration_minutes`.
+Required arguments: `account_code`, `task_relative_id`, `description`, `progress_percent`, `duration_minutes`.
 
 Don't log work to Stories directly — Stories are containers. Log to the subtask piece that actually had the work done on it.
 
@@ -59,13 +59,13 @@ A practical rule: every checked todo item is a small chunk of effort. Translate 
 
 ## AddAttachmentTool
 
-Required: `account_code`, `piece_id` (use `relative_id`), `file_path` (absolute path on local disk), `filename`.
+Required: `account_code`, `piece_relative_id`, `file_path` (absolute path on local disk), `filename`.
 
 Typical sources: system-test screenshots, `/run` skill output, exported reports.
 
 ## AddMessageTool
 
-Required: `account_code`, `piece_id` (use `relative_id`), `body`.
+Required: `account_code`, `piece_relative_id`, `body`.
 
 For status updates and comments on a piece thread.
 
@@ -78,4 +78,15 @@ For status updates and comments on a piece thread.
 
 ## Use `relative_id`, not `id`
 
-Every user-facing reference (URLs, attachment downloads, write-tool `piece_id` arguments) uses `relative_id`. The internal `id` is for the DB only; passing it where `relative_id` is expected returns errors that look like success (e.g., a JSON error body saved into a `.png` file).
+Every user-facing reference (URLs, attachment downloads, write-tool
+`piece_relative_id` / `task_relative_id` / `parent_relative_id` arguments) uses
+the relative id — the 2026-08-19 rename put that word in the argument name
+itself so it can't be confused with the internal `id` again. The internal `id`
+is for the DB only; passing it where a relative id is expected returns errors
+that look like success (e.g., a JSON error body saved into a `.png` file).
+
+> **Transitional note:** a server that predates the rename still expects the
+> old names — `piece_id`, `task_id`, `parent_id` — for the same value. If a
+> write call is rejected for an unrecognized argument, that's the sign; use the
+> old name until the server updates, then this note (and the old names above)
+> can go.
