@@ -18,26 +18,156 @@ if [[ "$(uname)" == "Darwin" ]]; then
   export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 fi
 
-# Align Ruby with the project's .ruby-version, also BEFORE Ruby starts.
-# Claude Code's Bash tool runs a non-interactive shell, so rvm's cd hook never
-# fires and PATH keeps pointing at the rvm *default* ruby. A project pinning a
-# different version then dies instantly on `bin/ci` / `bin/rails test` with
-# Bundler::RubyVersionMismatch, because those binstubs resolve `ruby` through
-# `#!/usr/bin/env`. Prepending the pinned version's bin dir fixes ci_start,
-# test_start and any direct run_with_log call in one place.
-if [ -r "$PWD/.ruby-version" ]; then
-  pinned_ruby="$(tr -d '[:space:]' < "$PWD/.ruby-version")"
-  pinned_ruby="${pinned_ruby#ruby-}"
-  for ruby_bindir in "$HOME/.rvm/wrappers/ruby-$pinned_ruby" \
-                     "$HOME/.rbenv/versions/$pinned_ruby/bin" \
-                     "$HOME/.asdf/installs/ruby/$pinned_ruby/bin"; do
-    if [ -x "$ruby_bindir/ruby" ]; then
-      export PATH="$ruby_bindir:$PATH"
-      break
+# Put the right Ruby on PATH, also BEFORE Ruby starts — whatever manages Ruby
+# on this machine.
+#
+# Claude Code's Bash tool runs a non-interactive, non-login shell, and that is
+# where the version managers part company. rvm survives it because it leaves a
+# real interpreter in the login PATH; rbenv, asdf and mise install themselves
+# through an `init` line in ~/.zshrc, which a non-interactive zsh never reads —
+# so on those machines `ruby` is macOS's own 2.6, and every binstub resolving
+# `ruby` through `#!/usr/bin/env` dies before printing anything you can act on.
+# Even where a manager did load, PATH points at its *default* version, and a
+# project pinning something else dies on Bundler::RubyVersionMismatch instead.
+#
+# So two steps, in this order:
+#
+#   1. shims, when PATH has no Ruby but the system one — so `ruby` and `bundle`
+#      exist at all. Only then: on a machine where a manager already won, we do
+#      not fight it.
+#   2. the pinned version's own bin dir ahead of everything, chosen by asking
+#      each candidate interpreter for its RUBY_VERSION rather than by trusting
+#      the directory name. Managers disagree about naming — `ruby-3.4.7` under
+#      rvm, `3.4.7` under rbenv, an opaque hash dir under mise — and the
+#      interpreter does not.
+#
+# Nothing here aborts the run: run_with_log also carries `go test` and `npm ci`,
+# where a Ruby pin is nobody's business, and a wrong guess about that would cost
+# a finished hour of work. What it does instead is record in the log header
+# which interpreter the command actually got, so the next mismatch is one line
+# away instead of an afternoon.
+
+ruby_alignment=""
+
+# Prepend to PATH unless it is already there — repeated invocations of the same
+# helper otherwise grow PATH without bound.
+prepend_path() {
+  case ":${PATH}:" in
+    *":$1:"*) return 1 ;;
+    *) PATH="$1:$PATH"; export PATH; return 0 ;;
+  esac
+}
+
+# .ruby-version belongs to the project root, and run_with_log is not always
+# invoked from it — a helper called from app/ or from a worktree subdirectory
+# would otherwise see no pin at all. Walk up, the way the managers themselves do.
+ruby_version_file() {
+  local dir="$PWD"
+  while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+    if [ -r "$dir/.ruby-version" ]; then
+      printf '%s\n' "$dir/.ruby-version"
+      return 0
     fi
+    dir="$(dirname "$dir")"
   done
-  unset pinned_ruby ruby_bindir
-fi
+  return 1
+}
+
+# Every bin dir that might hold Ruby $1, most authoritative first. Managers on
+# PATH are asked where they keep it; the ones that are not (the non-interactive
+# shell again) get their documented default layout probed instead.
+ruby_candidate_bindirs() {
+  local version="$1" root
+  local series="${version%.*}"   # 3.4.7 -> 3.4, for the Homebrew kegs
+
+  if command -v rbenv >/dev/null 2>&1; then
+    root="$(rbenv root 2>/dev/null)"
+    [ -n "$root" ] && printf '%s\n' "$root/versions/$version/bin"
+  fi
+  printf '%s\n' "${RBENV_ROOT:-$HOME/.rbenv}/versions/$version/bin"
+
+  if command -v mise >/dev/null 2>&1; then
+    root="$(mise where "ruby@$version" 2>/dev/null)"
+    [ -n "$root" ] && printf '%s\n' "$root/bin"
+  fi
+  printf '%s\n' "${MISE_DATA_DIR:-$HOME/.local/share/mise}/installs/ruby/$version/bin"
+
+  if command -v asdf >/dev/null 2>&1; then
+    root="$(asdf where ruby "$version" 2>/dev/null)"
+    [ -n "$root" ] && printf '%s\n' "$root/bin"
+  fi
+  printf '%s\n' "${ASDF_DATA_DIR:-$HOME/.asdf}/installs/ruby/$version/bin"
+
+  # rvm: the wrapper dir first — it is what `rvm use` puts on PATH — then the
+  # interpreter's own bin dir for installs that have no wrapper.
+  printf '%s\n' "${rvm_path:-$HOME/.rvm}/wrappers/ruby-$version"
+  printf '%s\n' "${rvm_path:-$HOME/.rvm}/rubies/ruby-$version/bin"
+
+  # chruby keeps no index of its own; these are the two roots it scans.
+  printf '%s\n' "$HOME/.rubies/ruby-$version/bin"
+  printf '%s\n' "/opt/rubies/ruby-$version/bin"
+
+  printf '%s\n' "$HOME/.frum/versions/$version/bin"
+
+  # A Homebrew keg is named by series, so it only matches when its patch level
+  # happens to be the pinned one — which is why every candidate is verified.
+  printf '%s\n' "/opt/homebrew/opt/ruby@$series/bin"
+  printf '%s\n' "/usr/local/opt/ruby@$series/bin"
+}
+
+ruby_on_path() { command -v ruby 2>/dev/null || printf 'none on PATH\n'; }
+
+# Step 1: nothing but the system Ruby in sight — offer the shims.
+case "$(command -v ruby 2>/dev/null)" in
+  ""|/usr/bin/ruby|/bin/ruby)
+    for ruby_shims in "${RBENV_ROOT:-$HOME/.rbenv}/shims" \
+                      "${ASDF_DATA_DIR:-$HOME/.asdf}/shims" \
+                      "${MISE_DATA_DIR:-$HOME/.local/share/mise}/shims"; do
+      [ -x "$ruby_shims/ruby" ] && prepend_path "$ruby_shims"
+    done
+    unset ruby_shims
+    ;;
+esac
+
+# Step 2: honour the pin.
+align_ruby() {
+  local version_file pinned bindir
+
+  if ! version_file="$(ruby_version_file)"; then
+    ruby_alignment="$(ruby_on_path) (no .ruby-version above $PWD)"
+    return 0
+  fi
+
+  pinned="$(tr -d '[:space:]' < "$version_file")"
+  pinned="${pinned#ruby-}"
+  if [ -z "$pinned" ]; then
+    ruby_alignment="$(ruby_on_path) ($version_file is empty)"
+    return 0
+  fi
+
+  if [ "$(ruby -e 'print RUBY_VERSION' 2>/dev/null)" = "$pinned" ]; then
+    ruby_alignment="$(ruby_on_path) (already $pinned, pinned by $version_file)"
+    return 0
+  fi
+
+  while IFS= read -r bindir; do
+    [ -n "$bindir" ] || continue
+    [ -x "$bindir/ruby" ] || continue
+    [ "$("$bindir/ruby" -e 'print RUBY_VERSION' 2>/dev/null)" = "$pinned" ] || continue
+    prepend_path "$bindir"
+    ruby_alignment="$bindir/ruby ($pinned, pinned by $version_file)"
+    return 0
+  done <<CANDIDATES
+$(ruby_candidate_bindirs "$pinned")
+CANDIDATES
+
+  ruby_alignment="$(ruby_on_path) — WARNING: $version_file pins $pinned and no \
+installed $pinned was found under rvm, rbenv, asdf, mise, chruby, frum or Homebrew"
+  echo "run_with_log: $ruby_alignment" >&2
+  return 0
+}
+
+align_ruby
 
 # Per-project log dir: sha256 slug of $PWD prevents cross-project latest_*.log collisions.
 project_slug="$(printf '%s' "$PWD" | shasum -a 256 | cut -c1-12)"
@@ -192,6 +322,7 @@ main() {
     echo "Started: $(date '+%Y-%m-%d %H:%M:%S')"
     echo "PID file: $pidfile"
     echo "Stall watchdog: ${STALL_TIMEOUT}s timeout"
+    echo "Ruby: ${ruby_alignment:-unknown}"
     echo "===================="
     echo ""
   } > "$logfile"
