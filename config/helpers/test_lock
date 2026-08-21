@@ -4,6 +4,10 @@ set -euo pipefail
 LOCKFILE="/tmp/claude_test_run.lock"
 LOCKDIR="/tmp/claude_test_run.lock.acquiring"
 MAX_AGE=900
+# The mkdir guard covers only the handful of statements between taking it and
+# releasing it, so a guard older than this is not contention — it is debris left
+# by an acquire that died in between.
+GUARD_MAX_AGE=30
 
 # Reduce a directory to the identity the ownership check should compare: its
 # physical path, and inside a git checkout the worktree root. That makes a
@@ -90,19 +94,66 @@ is_lock_stale() {
   return 1
 }
 
+# Age of the mkdir guard in seconds, or nothing when it cannot be read. BSD stat
+# first, GNU second — the same order the date calls below already use. Always
+# succeeds, so a caller under errexit can assign from it.
+lockdir_age() {
+  local mtime
+  mtime=$( { stat -f %m "$LOCKDIR" 2>/dev/null || stat -c %Y "$LOCKDIR" 2>/dev/null; } || true )
+  if [ -z "$mtime" ]; then
+    return 0
+  fi
+  printf '%s' "$(( $(date +%s) - mtime ))"
+}
+
+# Read PID= and STARTED= out of the lockfile without letting a missing field
+# abort the script. Expects $now; sets $lock_pid, $lock_started, $age and
+# $malformed in the caller, the same way is_lock_stale reads what its caller set.
+#
+# The plain assignments this replaces carried their pipeline's status, and under
+# `set -euo pipefail` a lockfile with no PID= line killed acquire outright — no
+# output, exit 1, before any staleness check had run. The operator saw only
+# CI_ERROR/acquire_unexpected_output with a blank tail, and because the reap was
+# never reached, the malformed lock stayed and every retry failed the same way.
+# is_lock_stale reads the same file with the same pipelines and survives purely
+# because it is called from an `if` condition; that asymmetry is what this ends.
+read_lock_header() {
+  lock_pid=$(grep '^PID=' "$LOCKFILE" 2>/dev/null | cut -d= -f2 || true)
+  lock_started=$(grep '^STARTED=' "$LOCKFILE" 2>/dev/null | cut -d= -f2 || true)
+  malformed=""
+  age=0
+
+  if [ -z "$lock_pid" ]; then
+    malformed="PID="
+  fi
+  if ! printf '%s' "$lock_started" | grep -Eq '^[0-9]+$'; then
+    malformed="${malformed:+$malformed and }STARTED="
+  fi
+
+  if [ -z "$malformed" ]; then
+    age=$(( now - lock_started ))
+  fi
+}
+
 acquire() {
   local caller="${1:?Usage: test_lock acquire <caller> <command>}"
   local command="${2:?Usage: test_lock acquire <caller> <command>}"
 
   # Check existing lock
+  local malformed_note=""
   if [ -f "$LOCKFILE" ]; then
-    local lock_pid lock_started now age
-    lock_pid=$(grep '^PID=' "$LOCKFILE" | cut -d= -f2)
-    lock_started=$(grep '^STARTED=' "$LOCKFILE" | cut -d= -f2)
+    local lock_pid lock_started now age malformed
     now=$(date +%s)
-    age=$(( now - lock_started ))
+    read_lock_header
 
-    if ! is_lock_stale; then
+    if [ -n "$malformed" ]; then
+      # A lockfile that does not name its holder cannot be checked against it,
+      # and an unverifiable lock is not one to sit behind indefinitely. Reap it
+      # deliberately, and report it after ACQUIRED rather than before, so that
+      # ci_start still finds its verdict on the first line it reads.
+      malformed_note="REAPED_MALFORMED=$LOCKFILE (no $malformed)"
+      rm -f "$LOCKFILE"
+    elif ! is_lock_stale; then
       echo "LOCKED"
       cat "$LOCKFILE"
       # Calculate and show estimated remaining time
@@ -131,20 +182,36 @@ acquire() {
   if ! mkdir "$LOCKDIR" 2>/dev/null; then
     sleep 1
     if ! mkdir "$LOCKDIR" 2>/dev/null; then
-      echo "LOCKED (lock is being acquired by another agent)"
-      echo "INSTRUCTION: Tests/CI are already running. DO NOT attempt to remove the lock, kill the process, or bypass this in any way. Simply report this to the user and stop. Then retry after the estimated time."
-      exit 1
+      # The lockfile has had staleness handling all along; this directory had
+      # none, so an acquire killed between the mkdir and the rmdir below left it
+      # behind for good. Every later run then reported LOCKED with no PROJECT=
+      # or LOGFILE= to harvest, ci_start turned that into OTHER_PROJECT=unknown,
+      # and the orchestrator — told not to wait on "unknown" — spun until its
+      # iteration cap and declared the lock stuck, naming nothing to delete.
+      local guard_age
+      guard_age=$(lockdir_age)
+      if [ -n "$guard_age" ] && [ "$guard_age" -ge "$GUARD_MAX_AGE" ]; then
+        rmdir "$LOCKDIR" 2>/dev/null || true
+      fi
+
+      if ! mkdir "$LOCKDIR" 2>/dev/null; then
+        echo "LOCKED (lock is being acquired by another agent)"
+        echo "GUARD=$LOCKDIR (age ${guard_age:-unknown}s)"
+        echo "INSTRUCTION: Tests/CI are already running. DO NOT attempt to remove the lock, kill the process, or bypass this in any way. Simply report this to the user and stop. Then retry after the estimated time."
+        exit 1
+      fi
     fi
   fi
 
   # Double-check after guard
   if [ -f "$LOCKFILE" ]; then
-    local lock_pid lock_started now age
-    lock_pid=$(grep '^PID=' "$LOCKFILE" | cut -d= -f2)
-    lock_started=$(grep '^STARTED=' "$LOCKFILE" | cut -d= -f2)
+    local lock_pid lock_started now age malformed
     now=$(date +%s)
-    age=$(( now - lock_started ))
-    if ! is_lock_stale; then
+    read_lock_header
+    if [ -n "$malformed" ]; then
+      malformed_note="REAPED_MALFORMED=$LOCKFILE (no $malformed)"
+      rm -f "$LOCKFILE"
+    elif ! is_lock_stale; then
       rmdir "$LOCKDIR" 2>/dev/null
       echo "LOCKED"
       cat "$LOCKFILE"
@@ -206,6 +273,8 @@ except:
 
   rmdir "$LOCKDIR" 2>/dev/null
   echo "ACQUIRED"
+  [ -n "$malformed_note" ] && printf '%s\n' "$malformed_note"
+  return 0
 }
 
 set_command_pid() {
