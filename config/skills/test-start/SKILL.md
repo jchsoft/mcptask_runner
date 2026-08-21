@@ -2,7 +2,6 @@
 name: test-start
 description: Internal helper for /test-runner. Acquires the global test lock and launches the given test command detached, or reports that another agent is running. Not meant for direct user invocation — use /test-runner instead.
 context: fork
-model: haiku
 allowed-tools: Bash
 ---
 

@@ -7,7 +7,7 @@ description: "Write to mcptask.online — create pieces (tasks/stories/recurents
 
 Write operations against the `mcptask-online` MCP server. Lives in the parent context because the returned IDs (new piece IDs, effort IDs) are needed for next steps.
 
-For reads — piece details, next task, list, attachment download, user info — use the `mcptask-read` skill instead. That one forks to Haiku and returns a compact summary so the raw JSON never bloats the parent.
+For reads — piece details, next task, list, attachment download, user info — use the `mcptask-read` skill instead. That one runs in a fork and returns a compact summary so the raw JSON never bloats the parent.
 
 ## Account code
 

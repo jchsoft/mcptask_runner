@@ -2,7 +2,6 @@
 name: wait-unlock
 description: Wait for test lock to be released. Use when user says "wait for lock", "wait-unlock", "počkej na lock", "čekej na uvolnění", or when you need to wait for another test/CI run to finish before proceeding.
 context: fork
-model: haiku
 allowed-tools: Bash
 ---
 

@@ -132,7 +132,7 @@ models:
 - **smart** — Triage and Review/Reviews.
 - **primitive** — read-only Dry display.
 
-Pinning versioned IDs prevents context-overflow retry chains. The runner also exports these as `ANTHROPIC_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL` so forked subagents and skills inherit the same overrides. The `models:` section is **optional**: without it the runner falls back to generic `opus`/`sonnet`/`haiku` aliases that the Claude CLI resolves at runtime. On non-Anthropic backends you **must** pin all three IDs or forked subagents fail with "model may not exist".
+Pinning versioned IDs prevents context-overflow retry chains. The runner also exports these as `ANTHROPIC_DEFAULT_{HAIKU,SONNET,OPUS}_MODEL` so forked subagents inherit the same overrides. The `models:` section is **optional**: without it the runner falls back to generic `opus`/`sonnet`/`haiku` aliases that the Claude CLI resolves at runtime. On non-Anthropic backends you **must** pin all three IDs or forked subagents fail with "model may not exist".
 
 #### `launcher:` — alternate backend
 
@@ -241,17 +241,17 @@ The installer copies these skills into `.claude/skills/`:
 
 | Skill | Context | Purpose |
 |-------|---------|---------|
-| `memory-search` | Haiku fork | Search LLM Memory Notes, return a compact filtered summary |
-| `discover` | Haiku fork | Locate symbols/callers/impact via CodeGraph → LSP → Grep |
-| `mcptask-read` | Haiku fork | Fetch piece/task data as a compact summary |
+| `memory-search` | fork | Search LLM Memory Notes, return a compact filtered summary |
+| `discover` | fork | Locate symbols/callers/impact via CodeGraph → LSP → Grep |
+| `mcptask-read` | fork | Fetch piece/task data as a compact summary |
 | `mcptask-write` | parent | Create pieces, log progress, attach files (needs returned IDs) |
 | `test-runner` | parent | Orchestrate `test-start` + `test-wait` with adaptive timeouts |
-| `test-start` | Haiku fork | Acquire global test lock, launch detached test command |
-| `test-wait` | Haiku fork | Poll the test log for an exit-code footer (≤9 min) |
+| `test-start` | fork | Acquire global test lock, launch detached test command |
+| `test-wait` | fork | Poll the test log for an exit-code footer (≤9 min) |
 | `ci-runner` | parent | Orchestrate `ci-start` + `ci-wait` for `bin/ci` under a global lock |
-| `ci-start` | Haiku fork | Acquire global CI lock, launch `bin/ci` detached |
-| `ci-wait` | Haiku fork | Poll the CI log for an exit-code footer (≤9 min) |
-| `wait-unlock` | Haiku fork | Wait for the global test lock to release |
+| `ci-start` | fork | Acquire global CI lock, launch `bin/ci` detached |
+| `ci-wait` | fork | Poll the CI log for an exit-code footer (≤9 min) |
+| `wait-unlock` | fork | Wait for the global test lock to release |
 
 ## Observability
 

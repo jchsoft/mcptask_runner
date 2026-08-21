@@ -2,13 +2,12 @@
 name: discover
 description: "Find a symbol, function, class, method, route, or any code location using the precise tool for the job — CodeGraph first, LSP next, Grep only as last resort. ALWAYS prefer this skill over running Grep/Glob/Read directly when exploring code. It picks the cheapest tool, falls back when one tool draws a blank, and returns compact `file:line` results so the parent never sees raw greps or whole-file dumps. Use when the user says 'find X', 'where is X', 'where is X defined', 'who calls X', 'who uses X', 'show me X', 'what calls Y', 'what does Y call', 'what's the impact of changing Z', 'find similar implementations', or whenever you're about to start an exploration. For concept / pattern / lesson-learned queries (architecture, decisions, past bugs) use `/memory-search` instead — this skill is for code locations."
 context: fork
-model: haiku
 allowed-tools: mcp__codegraph__codegraph_search, mcp__codegraph__codegraph_context, mcp__codegraph__codegraph_callers, mcp__codegraph__codegraph_callees, mcp__codegraph__codegraph_impact, mcp__codegraph__codegraph_node, mcp__codegraph__codegraph_files, mcp__codegraph__codegraph_status, mcp__railsMcpServer__project_info, mcp__railsMcpServer__get_routes, mcp__railsMcpServer__get_schema, mcp__railsMcpServer__analize_models, mcp__railsMcpServer__get_models, mcp__railsMcpServer__analyze_controller_views, mcp__railsMcpServer__analyze_environment_config, mcp__railsMcpServer__switch_project, LSP, Grep, Glob, Read, ToolSearch
 ---
 
 # Code Discovery Skill
 
-Find code locations using the cheapest tool first. Runs in a forked Haiku context so the parent only sees compact `file:line` results, not raw tool output.
+Find code locations using the cheapest tool first. Runs in a forked context so the parent only sees compact `file:line` results, not raw tool output.
 
 ## Why this skill exists
 

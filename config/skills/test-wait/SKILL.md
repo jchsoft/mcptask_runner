@@ -2,7 +2,6 @@
 name: test-wait
 description: Internal helper for /test-runner. Polls a test log file once a minute for up to 9 minutes, looking for the "Exit code:" footer. Not meant for direct user invocation — use /test-runner instead.
 context: fork
-model: haiku
 allowed-tools: Bash
 ---
 

@@ -1,18 +1,17 @@
 ---
 name: mcptask-read
-description: "Read mcptask.online pieces and return a COMPACT summary instead of raw MCP JSON. ALWAYS prefer this skill over calling the `mcp__mcptask-online__Get*`/`List*` read tools directly — raw piece payloads can be 2-10KB each and accumulate fast in the parent session. Use when the user says 'load task #N', 'load piece #N', 'story #N', 'next task', 'piece details', 'list pieces', 'download attachment', 'who am I', references an mcptask.online piece by ID, or any time you would otherwise read from the `mcptask-online` MCP server. Skill runs in a forked Haiku context — raw JSON never reaches the parent."
+description: "Read mcptask.online pieces and return a COMPACT summary instead of raw MCP JSON. ALWAYS prefer this skill over calling the `mcp__mcptask-online__Get*`/`List*` read tools directly — raw piece payloads can be 2-10KB each and accumulate fast in the parent session. Use when the user says 'load task #N', 'load piece #N', 'story #N', 'next task', 'piece details', 'list pieces', 'download attachment', 'who am I', references an mcptask.online piece by ID, or any time you would otherwise read from the `mcptask-online` MCP server. Skill runs in a forked context — raw JSON never reaches the parent."
 context: fork
-model: haiku
 allowed-tools: mcp__mcptask-online__GetPieceTool, mcp__mcptask-online__GetNextTaskTool, mcp__mcptask-online__GetCurrentUserTool, mcp__mcptask-online__ListPiecesTool, mcp__mcptask-online__GetPieceEffortsTool, mcp__mcptask-online__GetAttachmentTool, mcp__mcptask-online__GetProjectTool, mcp__mcptask-online__GetProjectTreeTool, mcp__mcptask-online__ListProjectsTool, mcp__mcptask-online__GetUsageGuideTool, ToolSearch, Bash, Read
 ---
 
 # mcptask.online Read Skill
 
-Fetch piece/user data from the `mcptask-online` MCP server and return a compact summary. The skill runs in a forked Haiku context so raw MCP JSON stays out of the parent.
+Fetch piece/user data from the `mcptask-online` MCP server and return a compact summary. The skill runs in a forked context so raw MCP JSON stays out of the parent.
 
 ## ⛔ HARD RULES — read first
 
-1. **You ARE the forked Haiku context. You DO have MCP access.** Never return "I'm an agent without MCP access" — that is wrong. Either a read tool succeeds (possibly after retries), or you return the structured error block at the bottom.
+1. **You ARE the forked context. You DO have MCP access.** Never return "I'm an agent without MCP access" — that is wrong. Either a read tool succeeds (possibly after retries), or you return the structured error block at the bottom.
 2. **Read through the `mcp__mcptask-online__*` tools, never through `ReadMcpResourceTool`.** The built-in MCP *resource* reader is not available inside forked subagents — only MCP *tools* propagate. Reads that go through resources work in the parent and silently fail here.
 3. **NEVER use Bash, curl, wget, Net::HTTP, or any HTTP client to fetch piece, user, or list data.** The mcptask.online HTTPS API path `/api/{account}/pieces/{id}` expects the internal `id` (NOT `relative_id`) — improvising HTTP returns the WRONG piece. (The one exception is the attachment *download* command you hand back to the parent — see "Attachment download".)
 4. **Follow the steps in order. Do not skip Step 1.**
@@ -98,7 +97,7 @@ Bash(command: "sleep 3", description: "Wait for mcptask-online to connect")
 mcp__mcptask-online__GetPieceTool(account_code: "jchsoft", piece_relative_id: 10464)
 ```
 
-You ARE the forked Haiku context that owns the MCP connection. Do not return text like "I'm an agent without MCP access" — that is wrong. Either the tool eventually succeeds, or it fails after 3 retries and you return the literal error string from the last attempt (see Error handling below).
+You ARE the forked context that owns the MCP connection. Do not return text like "I'm an agent without MCP access" — that is wrong. Either the tool eventually succeeds, or it fails after 3 retries and you return the literal error string from the last attempt (see Error handling below).
 
 ## Step 3: Return a compact summary
 

@@ -2,7 +2,6 @@
 name: memory-search
 description: "Search LLM Memory Notes and return compact, filtered summary. Use when CLAUDE.md instructs to search memory notes before coding, or when user says 'search memory', 'hledej v paměti', 'co víme o X'."
 context: fork
-model: haiku
 allowed-tools: Bash, ToolSearch, mcp__llmmn-production__RateNoteTool
 ---
 
@@ -13,7 +12,7 @@ This skill exists to prevent verbose memory note results from bloating the main 
 
 ## ⛔ HARD RULES — read first
 
-1. **You ARE the forked Haiku context.** Never return "I'm an agent without MCP access" or delegate the search back to the parent — that defeats the whole point of the fork. Either the search succeeds, or you return the error block at the bottom.
+1. **You ARE the forked context.** Never return "I'm an agent without MCP access" or delegate the search back to the parent — that defeats the whole point of the fork. Either the search succeeds, or you return the error block at the bottom.
 2. **Search via the REST API with `Bash`/`curl`, not via `ReadMcpResourceTool`.** The llm-memory.com MCP server exposes search only as an MCP *resource*, and the built-in resource reader is **not available inside forked subagents** — only MCP *tools* propagate. `ToolSearch(query: "select:ReadMcpResourceTool")` returns "No matching deferred tools found" here. Don't waste turns on it.
 
 ## Input

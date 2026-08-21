@@ -39,7 +39,7 @@ For non-adaptive types: fixed defaults `file`=120, `system_file`=180, `line`=60.
 
 ## Step 3: Drive the state machine
 
-Each sub-skill runs in a Haiku **fork**. After it returns, the harness prints a line like
+Each sub-skill runs in a **fork**. After it returns, the harness prints a line like
 `Skill "test-start" completed (forked execution)` — that is a normal wrapper notice, NOT an
 error and NOT "empty output". The structured block printed **above** it (`TEST_STARTED` /
 `TEST_LOG=` / `NEXT=`, or `NOT_FINISHED`, `FINISHED_SELF`, …) IS the sub-skill's result — parse

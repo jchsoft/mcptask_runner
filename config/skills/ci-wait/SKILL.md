@@ -2,7 +2,6 @@
 name: ci-wait
 description: Internal helper for /ci-runner. Polls a CI log file once a minute for up to 9 minutes, looking for the "Exit code:" footer. Not meant for direct user invocation — use /ci-runner instead.
 context: fork
-model: haiku
 allowed-tools: Bash
 ---
 
