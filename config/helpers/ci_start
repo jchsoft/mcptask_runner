@@ -11,6 +11,7 @@
 #   OTHER_LOG=<path or "unknown">
 #   OTHER_PROJECT=<path>
 #   OTHER_REMAINING=<string>
+#   INSTRUCTION: <verbatim from test_lock, when it emitted one>
 #
 #   CI_ERROR
 #   REASON=<short>
@@ -27,10 +28,15 @@ if printf '%s' "$first_line" | grep -q '^LOCKED'; then
   other_log=$(printf '%s\n' "$acquire_output" | grep '^LOGFILE=' | head -1 | cut -d= -f2-)
   other_project=$(printf '%s\n' "$acquire_output" | grep '^PROJECT=' | head -1 | cut -d= -f2-)
   other_remaining=$(printf '%s\n' "$acquire_output" | grep '^ESTIMATED_REMAINING=' | head -1 | cut -d= -f2-)
+  # test_lock spells out that the lock must not be worked around. Dropping that
+  # line here is how the prohibition stopped reaching the agent that needed it,
+  # so it is forwarded verbatim rather than summarised.
+  instruction=$(printf '%s\n' "$acquire_output" | grep '^INSTRUCTION:' | head -1)
   echo "CI_LOCKED"
   echo "OTHER_LOG=${other_log:-unknown}"
   echo "OTHER_PROJECT=${other_project:-unknown}"
   echo "OTHER_REMAINING=${other_remaining:-unknown}"
+  [ -n "$instruction" ] && printf '%s\n' "$instruction"
   exit 0
 fi
 

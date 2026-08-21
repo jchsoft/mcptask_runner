@@ -32,7 +32,12 @@ CI_LOCKED
 OTHER_LOG=<absolute path or "unknown">
 OTHER_PROJECT=<absolute path>
 OTHER_REMAINING=<string like "12m 34s" or "overdue by Xs" or "unknown">
+INSTRUCTION: <one line, present whenever test_lock emitted one>
 ```
+
+The `INSTRUCTION:` line is the lock's own word on what must not be done to it.
+Return it with the rest, unshortened — it is the sentence the orchestrator needs
+and the one that used to get dropped here.
 
 **On error:**
 ```

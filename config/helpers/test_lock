@@ -5,6 +5,45 @@ LOCKFILE="/tmp/claude_test_run.lock"
 LOCKDIR="/tmp/claude_test_run.lock.acquiring"
 MAX_AGE=900
 
+# Reduce a directory to the identity the ownership check should compare: its
+# physical path, and inside a git checkout the worktree root. That makes a
+# symlink, a trailing slash and a subdirectory of the same checkout compare
+# equal, while a linked worktree — which reports its own root, even when it sits
+# under .claude/worktrees/ inside the main one — stays distinct. Two worktrees
+# really are two concurrent runs, so refusing there is the correct answer; it is
+# only the same run wearing a different path that must stop looking foreign.
+normalize_path() {
+  local path="${1:-}"
+  if [ -z "$path" ]; then
+    return 0
+  fi
+
+  local physical toplevel
+  physical=$( ( cd "$path" 2>/dev/null && pwd -P ) || printf '%s' "$path" )
+  toplevel=$( ( cd "$physical" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null ) || true )
+
+  if [ -n "$toplevel" ]; then
+    ( cd "$toplevel" 2>/dev/null && pwd -P ) || printf '%s' "$toplevel"
+  else
+    printf '%s' "$physical"
+  fi
+}
+
+# A refusal that names no way out is exactly how this lock got bypassed once:
+# the caller was told not to touch a dead lock and given nowhere else to go, so
+# it ran the tests unlocked instead. Name the destination.
+deny_foreign_lock() {
+  local lock_project="$1"
+  echo "DENIED: the lock belongs to another working directory ($lock_project)."
+  echo "If its holder is alive this is a CI run in progress — wait it out; do not kill or release it."
+  echo "If its holder is dead you do not need this command either: 'acquire' reaps a stale lock by"
+  echo "itself, whatever directory owns it. Run /ci-runner (or 'test_lock acquire') and it will take"
+  echo "the lock cleanly."
+  echo "Run 'test_lock status' to see which of the two this is."
+  echo "In neither case run the tests directly to work around the lock."
+  exit 1
+}
+
 # Check if the current lock is stale. Expects $lock_pid, $age, and $LOCKFILE to be set.
 # Returns 0 (true) if stale, 1 (false) if lock is still valid.
 is_lock_stale() {
@@ -127,7 +166,7 @@ acquire() {
   # Determine expected duration from stored test_durations.json
   local expected_ms=""
   local project_dir
-  project_dir="$(pwd)"
+  project_dir="$(normalize_path "$PWD")"
   local durations_file="$project_dir/tmp/test_durations.json"
   # Fallback to legacy path inside .claude/ for projects not yet migrated
   [ ! -f "$durations_file" ] && durations_file="$project_dir/.claude/test_durations.json"
@@ -207,7 +246,7 @@ release_if_owner() {
   local lock_caller lock_project
   lock_caller=$(grep '^CALLER=' "$LOCKFILE" | cut -d= -f2)
   lock_project=$(grep '^PROJECT=' "$LOCKFILE" | cut -d= -f2)
-  if [ "$lock_caller" = "$caller" ] && [ "$lock_project" = "$(pwd)" ]; then
+  if [ "$lock_caller" = "$caller" ] && [ "$(normalize_path "$lock_project")" = "$(normalize_path "$PWD")" ]; then
     release
   else
     echo "not-owner (caller=$lock_caller project=$lock_project)"
@@ -220,12 +259,11 @@ kill_command() {
     exit 0
   fi
 
-  # Ownership check: only the project that acquired the lock can kill it
+  # Ownership check: only the working directory that acquired the lock can kill it
   local lock_project
   lock_project=$(grep '^PROJECT=' "$LOCKFILE" | cut -d= -f2)
-  if [ -n "$lock_project" ] && [ "$lock_project" != "$(pwd)" ]; then
-    echo "DENIED: Lock belongs to another project ($lock_project). You must NOT interfere with it."
-    exit 1
+  if [ -n "$lock_project" ] && [ "$(normalize_path "$lock_project")" != "$(normalize_path "$PWD")" ]; then
+    deny_foreign_lock "$lock_project"
   fi
 
   local cmd_pid sentinel_pid
@@ -258,12 +296,11 @@ kill_command() {
 
 release() {
   if [ -f "$LOCKFILE" ]; then
-    # Ownership check: only the project that acquired the lock can release it
+    # Ownership check: only the working directory that acquired the lock can release it
     local lock_project
     lock_project=$(grep '^PROJECT=' "$LOCKFILE" | cut -d= -f2)
-    if [ -n "$lock_project" ] && [ "$lock_project" != "$(pwd)" ]; then
-      echo "DENIED: Lock belongs to another project ($lock_project). You must NOT interfere with it."
-      exit 1
+    if [ -n "$lock_project" ] && [ "$(normalize_path "$lock_project")" != "$(normalize_path "$PWD")" ]; then
+      deny_foreign_lock "$lock_project"
     fi
 
     local lock_pid

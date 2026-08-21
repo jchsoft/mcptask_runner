@@ -6,9 +6,25 @@
 # and if the lock is active, blocks execution.
 
 require "json"
+require "digest"
 
 LOCKFILE = "/tmp/claude_test_run.lock"
-PIDDIR = File.expand_path("~/.claude/logs/pids")
+
+# run_with_log writes its pidfile under the LOCK HOLDER's per-project directory,
+# so the path has to be rebuilt from the lock's own PROJECT field — the same
+# slug test_lock derives. A flat ~/.claude/logs/pids has no writer anywhere, so
+# pointing at one made checks 3 and 4 miss every pidfile: every lock older than
+# ten seconds read as stale and this hook waved the command through.
+#
+# Returns nil when the lock names no project or no caller. That is not a
+# staleness signal — it means the holder cannot be located, and a lock we cannot
+# verify is one we must not declare dead.
+def pidfile_for(project, caller_name)
+  return nil if project.empty? || caller_name.empty?
+
+  slug = Digest::SHA256.hexdigest(project)[0, 12]
+  File.expand_path("~/.claude/logs/projects/#{slug}/pids/#{caller_name}.pid")
+end
 
 # Read the tool input from stdin (JSON with tool_name and tool_input)
 input = JSON.parse($stdin.read) rescue {}
@@ -51,11 +67,17 @@ age = now - lock_started
 # Check if lock is stale via multiple signals
 is_stale = false
 
-# 1. Sentinel dead or age >= 900 → stale
-begin
-  Process.kill(0, lock_pid)
-rescue Errno::ESRCH, Errno::EPERM
-  is_stale = true
+# 1. Sentinel dead or age >= 900 → stale.
+# Guard the non-positive case: a lock with no PID= line yields 0, and
+# Process.kill(0, 0) signals the caller's own process group instead of raising
+# ESRCH — so a corrupt lock would read as "sentinel alive" on the strength of
+# our own liveness. Leave the verdict to the pidfile checks below instead.
+if lock_pid.positive?
+  begin
+    Process.kill(0, lock_pid)
+  rescue Errno::ESRCH, Errno::EPERM
+    is_stale = true
+  end
 end
 is_stale = true if age >= 900
 
@@ -71,16 +93,17 @@ unless is_stale
   end
 end
 
-# 3. PID file gone + lock age >= 10s → run_with_log completed
 lock_caller = lock_data["CALLER"].to_s.strip
-unless is_stale
-  pidfile = File.join(PIDDIR, "#{lock_caller}.pid")
+lock_project = lock_data["PROJECT"].to_s.strip
+pidfile = pidfile_for(lock_project, lock_caller)
+
+# 3. PID file gone + lock age >= 10s → run_with_log completed
+unless is_stale || pidfile.nil?
   is_stale = true if !File.exist?(pidfile) && age >= 10
 end
 
 # 4. PID file exists but PID inside dead → run_with_log crashed
-unless is_stale
-  pidfile = File.join(PIDDIR, "#{lock_caller}.pid")
+unless is_stale || pidfile.nil?
   if File.exist?(pidfile)
     rwl_pid = File.read(pidfile).strip.to_i
     if rwl_pid > 0
