@@ -54,13 +54,13 @@ bundle exec rake mcptask_runner:install
 The install flow performs the following steps in order:
 
 1. **Install skills** — copies the 11 bundled Claude Code skills from the gem into `.claude/skills/` (skips existing ones unless `FORCE=1`). A manifest tracks each skill's content hash so updates can be detected later.
-2. **Install helper binaries** — copies the bundled CI/test helpers (`ci_wait`, `ci_start`, `test_start`, `test_lock`, `run_with_log`, `check_test_lock`, `_ci_filter_tail`, `kill_tree`) from the gem's `config/helpers/` into `~/.claude/bin` and restores their executable bit. `rake mcptask_runner:update` refreshes them too.
+2. **Install helper binaries** — copies the bundled CI/test helpers (`ci_wait`, `ci_start`, `test_start`, `test_lock`, `run_with_log`, `check_test_lock`, `_ci_filter_tail`, `kill_tree`, `runner-log`) from the gem's `config/helpers/` into `~/.claude/bin` and restores their executable bit. `rake mcptask_runner:update` refreshes them too.
 3. **Sync permissions** — merges the gem's `baseline_permissions.json` into `.claude/settings.local.json`.
 4. **Provision tokens** — obtains a JWT for mcptask.online and writes it to `~/.mcptask_env.d/mcptask_token`, sourcing that directory from `~/.zshrc`.
 5. **Configure `.mcp.json`** — adds the `mcptask-online` SSE server entry.
 6. **Generate LaunchAgent** — macOS only; sets up weekday (Mon–Fri) scheduling at 08:00.
 
-> **Helper binaries** live in the gem at `config/helpers/` and are the version-controlled source of truth. Both `install` and `update` copy them into `~/.claude/bin` (a single machine-global copy shared by every host project), which is where the CI/test skills expect them.
+> **Helper binaries** live in the gem at `config/helpers/` and are the version-controlled source of truth. Both `install` and `update` copy them into `~/.claude/bin` (a single machine-global copy shared by every host project), which is where the CI/test skills expect them. Of these, `runner-log` is the one you invoke directly from the shell to tail the current run; the others are called by the skills via absolute paths.
 
 ### Activating the LaunchAgent
 
