@@ -18,7 +18,7 @@ module McptaskRunner
     # invoke the first few, and those shell out (via absolute ~/.claude/bin/ paths) to
     # the rest. Ship all of them from config/helpers/ so a fresh install is self-contained.
     HELPER_BINARIES = %w[ci_wait ci_start test_start test_lock run_with_log
-                         check_test_lock _ci_filter_tail kill_tree].freeze
+                         check_test_lock _ci_filter_tail kill_tree runner-log].freeze
     MANIFEST_FILE   = '.mcptask_runner_manifest.json'
 
     module_function

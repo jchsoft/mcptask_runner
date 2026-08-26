@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# runner-log - Tail the current runner session log
+# Usage: runner-log [tail_opts]
+#
+# Convenience wrapper to tail the most recent mcptask runner session log.
+# Passes all args to tail (e.g., runner-log -f for live follow).
+
+set -u
+
+# Locate the most recent runner log in ~/.claude/logs/
+LOGS_DIR="$HOME/.claude/logs/projects"
+
+if [[ ! -d "$LOGS_DIR" ]]; then
+  echo "No runner logs found (logs directory missing)" >&2
+  exit 1
+fi
+
+# Find the most recent runner log file
+LATEST=$(find "$LOGS_DIR" -name 'run_*.json' -o -name '*_test-runner*.log' -o -name '*_ci-runner*.log' 2>/dev/null | sort | tail -1)
+
+if [[ -z "$LATEST" ]]; then
+  echo "No runner logs found" >&2
+  exit 1
+fi
+
+exec tail "$@" "$LATEST"
